@@ -1,6 +1,6 @@
 {
   "name": "@hailbell/react-native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hailbell in-app support chat and push for React Native and Expo. Wraps the native iOS and Android SDKs.",
   "main": "build/index.js",
   "types": "build/index.d.ts",

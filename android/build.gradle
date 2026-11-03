@@ -15,7 +15,7 @@ apply plugin: 'expo-module-gradle-plugin'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 group = 'com.hailbell.reactnative'
-version = '0.1.0'
+version = '0.1.1'
 
 if (!file('src/vendor/java/com/hailbell/Hailbell.kt').exists()) {
   throw new GradleException(
@@ -30,7 +30,7 @@ android {
     // The Android SDK supports Android 8 (API 26) and later. The config plugin raises the app to 26.
     minSdkVersion 26
     versionCode 1
-    versionName "0.1.0"
+    versionName "0.1.1"
     consumerProguardFiles 'src/vendor/consumer-rules.pro'
   }
   buildFeatures {

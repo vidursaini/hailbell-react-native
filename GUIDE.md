@@ -30,7 +30,7 @@ React Native app
 ## 2. Add the package
 
 ```sh
-npm install github:vidursaini/hailbell-react-native#0.1.0
+npm install github:vidursaini/hailbell-react-native#0.1.1
 ```
 
 The tag after `#` is a release from [the releases list](https://github.com/vidursaini/hailbell-react-native/tags); raise it to update. The package carries the native SDKs inside it, so there is nothing else to download. Once it is on the npm registry this becomes `npx expo install @hailbell/react-native`.

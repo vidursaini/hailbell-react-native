@@ -130,7 +130,7 @@ public final class HailbellPush {
 
     /// The model code, e.g. "iPhone17,2". Hailbell turns it into "iPhone 16 Pro Max". The simulator
     /// reports the Mac's chip, so it uses the model it's simulating.
-    static var model: String {
+    nonisolated static var model: String {
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return simulated }
         var info = utsname()
         uname(&info)
