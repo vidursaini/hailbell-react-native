@@ -1,0 +1,53 @@
+// The React Native module compiles the Android SDK itself: src/vendor holds a copy of
+// sdk/android/hailbell made by scripts/sync-native.mjs, so this module and native apps run the same code.
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    // The Compose compiler matches the app's Kotlin version, as in expo-modules-core.
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+group = 'com.hailbell.reactnative'
+version = '0.1.0'
+
+if (!file('src/vendor/java/com/hailbell/Hailbell.kt').exists()) {
+  throw new GradleException(
+    "@hailbell/react-native: the copy of the Android SDK is missing. Run `npm install` or " +
+    "`npm run sync-native` in sdk/react-native.")
+}
+
+android {
+  // The SDK's own namespace, so its resources and manifest entries keep their names.
+  namespace "com.hailbell"
+  defaultConfig {
+    // The Android SDK supports Android 8 (API 26) and later. The config plugin raises the app to 26.
+    minSdkVersion 26
+    versionCode 1
+    versionName "0.1.0"
+    consumerProguardFiles 'src/vendor/consumer-rules.pro'
+  }
+  buildFeatures {
+    compose true
+  }
+  sourceSets {
+    main {
+      java.srcDirs += 'src/vendor/java'
+      res.srcDirs += 'src/vendor/res'
+      // The SDK's manifest: the chat and push-open activities, INTERNET and POST_NOTIFICATIONS.
+      manifest.srcFile 'src/vendor/AndroidManifest.xml'
+    }
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+// The Android SDK's dependencies, generated from sdk/android/hailbell/build.gradle.kts.
+apply from: 'src/vendor/dependencies.gradle'

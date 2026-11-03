@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <activity
+            android:name="com.hailbell.ChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Hailbell.Chat"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Chat reply notifications carry this click action, so a tap opens the chat. -->
+            <intent-filter>
+                <action android:name="HAILBELL_OPEN_CHAT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="com.hailbell.PushOpenActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <!-- Campaign pushes carry this click action, so a tap is counted and opens the link. -->
+            <intent-filter>
+                <action android:name="HAILBELL_OPEN_PUSH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

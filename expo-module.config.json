@@ -1,0 +1,22 @@
+{
+  "platforms": [
+    "apple",
+    "android"
+  ],
+  "coreFeatures": [
+    "compose"
+  ],
+  "apple": {
+    "modules": [
+      "HailbellModule"
+    ],
+    "appDelegateSubscribers": [
+      "HailbellAppDelegate"
+    ]
+  },
+  "android": {
+    "modules": [
+      "com.hailbell.reactnative.HailbellModule"
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "@hailbell/react-native",
+  "version": "0.1.0",
+  "description": "Hailbell in-app support chat and push for React Native and Expo. Wraps the native iOS and Android SDKs.",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "plugin/build",
+    "plugin/vendor",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "ios",
+    "android/build.gradle",
+    "android/src",
+    "README.md",
+    "LICENSE",
+    "VENDORED_FROM"
+  ],
+  "scripts": {
+    "sync-native": "node scripts/sync-native.mjs",
+    "build": "tsc -p tsconfig.build.json && tsc -p plugin/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p plugin/tsconfig.json --noEmit",
+    "test": "jest",
+    "prepare": "node scripts/sync-native.mjs && npm run build"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "support",
+    "chat",
+    "push-notifications",
+    "hailbell"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vidursaini/hailbell-react-native"
+  },
+  "homepage": "https://hailbell.com",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": ">=54",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@expo/config-plugins": "*",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "~19.3.0",
+    "babel-preset-expo": "~58.0.22",
+    "expo": "^58.0.21",
+    "jest": "^30.0.0",
+    "jest-expo": "~58.0.13",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-test-renderer": "19.3.0",
+    "typescript": "~6.0.3",
+    "xcode": "^3.0.1"
+  }
+}
