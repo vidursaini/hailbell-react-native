@@ -22,15 +22,20 @@ React Native app
 
 ## 1. Create the app in the dashboard
 
-1. In app.hailbell.com, open **Settings › Apps** and choose **New app**. Add an iOS platform and an Android platform under **Settings → Add iOS / Android**. Each platform has its own **App ID** (`app_…`). App IDs are public, so they live in code.
-2. iOS: enter the **Bundle ID (for push)**. Android: set the app's **Firebase project** under its push settings. Hailbell sends Android replies through FCM with it, and checks Firebase ID tokens against it (step 6).
-3. Under **Chat design**, set the accent for light and dark mode, and upload the team photo. Both platforms share it.
-4. Optionally set up Discord or Telegram, AI replies, review requests (App Store ID and Play package) and offers.
+1. **Sign up** at [app.hailbell.com](https://app.hailbell.com/?signup=1) with **Continue with Google** or an emailed sign-in link. The first sign-in makes an account with a 14 day free trial, no card needed, and the first-run setup creates your first app from an App Store search.
+2. Give the app an **iOS** and an **Android** platform: on the app's page in **Settings**, use **Add iOS** or **Add Android** under **Platforms**. Each platform has its own **App ID** (`app_…`), and your app passes the one for the platform it runs on. App IDs are public, so they live in code. Set the iOS platform's **Bundle ID (for push)** under **Edit**.
+3. Upload your push keys in **Settings › Push keys**:
+   - **iOS:** in Apple Developer, **Certificates, Identifiers & Profiles › Keys**, make a key with **Apple Push Notifications service (APNs)** on, download the `.p8` file, and upload it with its **Key ID** and your **Team ID**. One key covers every app in that Apple team.
+   - **Android:** in the Firebase console, **Project settings › Service accounts › Generate new private key**, and upload the JSON file. One file per Firebase project.
+
+   Hailbell checks each key with Apple or Google, stores it encrypted and never shows it again.
+4. In **Push › Setup**, enter the Android app's **Firebase project ID** (from `google-services.json`) and press **Save**. Both cards should say **Ready**. Hailbell also checks Firebase ID tokens against that project (signed-in users, below).
+5. Optional: **Chat design** (accent for light and dark, title, team photo), **Reviews** (App Store ID and Play package name), **Offers**, Discord or Telegram, and AI replies.
 
 ## 2. Add the package
 
 ```sh
-npm install github:vidursaini/hailbell-react-native#0.1.1
+npm install github:vidursaini/hailbell-react-native#1.0.0
 ```
 
 The tag after `#` is a release from [the releases list](https://github.com/vidursaini/hailbell-react-native/tags); raise it to update. The package carries the native SDKs inside it, so there is nothing else to download. Once it is on the npm registry this becomes `npx expo install @hailbell/react-native`.
@@ -74,7 +79,7 @@ Without the plugin's App ID, call `Hailbell.configure` from JavaScript (step 4).
 
 ## 4. Wrap it in one file
 
-Keep every Hailbell call in one file, so emptying one string turns the chat off. `sdk/react-native/example/src/hailbell.ts` is a complete version of this file with expo-notifications.
+Keep every Hailbell call in one file, so emptying one string turns the chat off. `example/src/hailbell.ts` is a complete version of this file with expo-notifications.
 
 ```ts
 // src/support/hailbell.ts
@@ -116,7 +121,7 @@ Call `configureHailbell()` once, at the top level of your app's entry file or ro
 | `configure({ appId })` | The chat, with a session per install. The install id survives a reinstall on iOS (Keychain). |
 | `teamPhoto` | The header with your photo and no download wait. It takes `require('./photo.png')`, a URI, or `null`. |
 | `setMetadata` | Customer chips (plan, app version) and pinned inbox columns. Values may be text, numbers or booleans; `null` values are left out. |
-| `superwallUserId` or `revenueCatUserId` metadata | Spend, plan and how long they've subscribed, from the Superwall or RevenueCat webhook (see the iOS guide, step 8). |
+| `superwallUserId` or `revenueCatUserId` metadata | Spend, plan and how long they've subscribed, from the Superwall or RevenueCat webhook you connect in the app's **Revenue** settings. |
 | `track` | Signals next to the chat, such as which button opened it or which paywall they declined. |
 | `setPaywallPlacements` + `onPaywall` | **Send offer** lists these placements, a tap opens the paywall in the app, and purchases count per offer. |
 
@@ -143,7 +148,7 @@ The package presents the chat; the app decides where people open it. Use the sam
 
    Outside components, read `Hailbell.unreadCount` or subscribe with `Hailbell.addUnreadCountListener`.
 3. **Home Screen quick action / app shortcut "Chat with us"**, for example with `expo-quick-actions`, calling `openSupport('quick_action')`.
-4. **Support bar "Need help?"** for free users, 24 hours after their first closed paywall. The iOS guide explains why it waits.
+4. **Support bar "Need help?"** for free users, 24 hours after their first closed paywall. Most buyers buy at the first paywall or within minutes of closing it, so waiting a day keeps them out of the chat. Check your own paywall data before picking the delay.
 
 `Hailbell.open()` shows a full-height sheet: a page sheet on iOS, its own translucent activity on Android. It doesn't stack a second chat if one is open. `Hailbell.close()` closes it.
 
@@ -264,7 +269,7 @@ Set up push with the library your app already uses. On iOS, the package also han
 
 4. Taps need no code. On Android, replies open the chat and campaign pushes open their link through the SDK. On iOS, the package's notification delegate does the same. To show replies as banners while the app is open on iOS, add `"messaging_ios_foreground_presentation_options": ["badge", "sound", "list", "banner"]` to `firebase.json`. That setting covers your Firebase pushes too.
 
-You don't need `FirebaseAppDelegateProxyEnabled = NO` (the iOS guide's step 6.4): the package reads the APNs token from the app delegate and from `getAPNSToken()`.
+Native iOS apps with Firebase sometimes set `FirebaseAppDelegateProxyEnabled = NO`. You don't need it here: the package reads the APNs token from the app delegate and from `getAPNSToken()`.
 
 ### Without a push library (iOS)
 
@@ -300,7 +305,7 @@ Hailbell's own push campaigns (from the dashboard, the REST API or MCP) need not
 - **Images, buttons, badge increments and delivery receipts on iOS** need the notification service extension: set `"ios": { "notificationService": true }` in the plugin. Prebuild then adds a `HailbellNotificationExtension` target with bundle ID `<your bundle ID>.NotificationService`, and EAS Build signs it. For badge increments, use `{ "appGroup": "group.<your bundle ID>" }` and call `HailbellPush.clearBadge('group.<your bundle ID>')` when the app opens. An app can have only one notification service extension; if another library already adds one, leave this off.
 - **Deep links:** on iOS, set `HailbellPush.onOpen = (n) => { router.push(...); return true; }` to route a link yourself. Return false or leave it unset, and Hailbell opens the link. On Android the link opens straight away through the app's intent filters; route it with React Native's `Linking`.
 - **Android channel:** campaigns show on "Offers and updates" (`hailbell_offers`). If the app already has an offers channel, set `android.offersChannel` in the plugin and the same ID as **Android: offers channel ID** in the dashboard.
-- **Offer pushes that open a paywall:** give the campaign a link like `yourapp://offer?source=support` and hand links your router doesn't handle to your paywall SDK, as in the native guides.
+- **Offer pushes that open a paywall:** give the campaign a link like `yourapp://offer?source=support` and hand links your router doesn't handle to your paywall SDK (Superwall has a deep-link handler for this), where a campaign on the `deepLink_open` event can open the offer paywall.
 
 ### Marketing opt-in
 
