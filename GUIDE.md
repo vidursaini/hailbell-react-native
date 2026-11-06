@@ -22,6 +22,8 @@ React Native app
 
 ## 1. Create the app in the dashboard
 
+Using a coding agent? With the [Hailbell skill](https://hailbell.com/docs#agents) and its MCP server connected, the agent makes the app and both platforms itself (step 2). You still sign up and upload the push keys (step 3).
+
 1. **Sign up** at [app.hailbell.com](https://app.hailbell.com/?signup=1) with **Continue with Google** or an emailed sign-in link. The first sign-in makes an account with a 14 day free trial, no card needed, and the first-run setup creates your first app from an App Store search.
 2. Give the app an **iOS** and an **Android** platform: on the app's page in **Settings**, use **Add iOS** or **Add Android** under **Platforms**. Each platform has its own **App ID** (`app_…`), and your app passes the one for the platform it runs on. App IDs are public, so they live in code. Set the iOS platform's **Bundle ID (for push)** under **Edit**.
 3. Upload your push keys in **Settings › Push keys**:
@@ -35,10 +37,10 @@ React Native app
 ## 2. Add the package
 
 ```sh
-npm install github:vidursaini/hailbell-react-native#1.0.0
+npx expo install @hailbell/react-native
 ```
 
-The tag after `#` is a release from [the releases list](https://github.com/vidursaini/hailbell-react-native/tags); raise it to update. The package carries the native SDKs inside it, so there is nothing else to download. Once it is on the npm registry this becomes `npx expo install @hailbell/react-native`.
+Bare React Native apps use `npm install @hailbell/react-native`. The package is [@hailbell/react-native on npm](https://www.npmjs.com/package/@hailbell/react-native) and carries the native SDKs inside it, so there is nothing else to download.
 
 Requirements:
 
@@ -93,7 +95,6 @@ export const isEnabled = APP_ID.length > 0;
 export function configureHailbell() {
   if (!isEnabled) return;
   Hailbell.configure({ appId: APP_ID });
-  Hailbell.teamPhoto = require('../../assets/support-photo.png'); // the header shows it at once, offline too
 
   Hailbell.setPaywallPlacements(['winback', 'support_offer']); // every placement an offer may open
   Hailbell.onPaywall = (placement, purchased) => {
@@ -119,11 +120,21 @@ Call `configureHailbell()` once, at the top level of your app's entry file or ro
 | Call | What you get in the dashboard |
 | --- | --- |
 | `configure({ appId })` | The chat, with a session per install. The install id survives a reinstall on iOS (Keychain). |
-| `teamPhoto` | The header with your photo and no download wait. It takes `require('./photo.png')`, a URI, or `null`. |
 | `setMetadata` | Customer chips (plan, app version) and pinned inbox columns. Values may be text, numbers or booleans; `null` values are left out. |
 | `superwallUserId` or `revenueCatUserId` metadata | Spend, plan and how long they've subscribed, from the Superwall or RevenueCat webhook you connect in the app's **Revenue** settings. |
 | `track` | Signals next to the chat, such as which button opened it or which paywall they declined. |
 | `setPaywallPlacements` + `onPaywall` | **Send offer** lists these placements, a tap opens the paywall in the app, and purchases count per offer. |
+
+### Who customers see on replies
+
+The dashboard decides, per app, and your app can't change it: the SDK has no setting for the name or photo on replies, so an app can't sign as someone else. In the dashboard:
+
+- **Chat design › Replies are signed**: **By each teammate** (their name and photo) or **As the team** (the chat title, else "<App> Support", and no personal photo).
+- **Profile › In each app**: each teammate can use another name, their own photo or no photo in one app, and their profile everywhere else.
+
+Changes show the next time the chat opens, with no app release. Earlier replies keep the name they were sent with and show the current photo. Agents can read and change the same over MCP (`get_reply_identity`, `update_reply_identity`) and REST (`/v1/reply-identity`).
+
+``Hailbell.teamPhoto`` is deprecated. Upload the photo in the dashboard instead: the chat loads it from Hailbell and caches it, so it usually shows offline after the first load. A bundled photo now shows only until the chat first hears from Hailbell, and after that only while the dashboard has no photo of its own for this app. It never shows once the app signs replies as the team, turns photos off, or sets a photo (or no photo) for this app. The chat remembers the last answer, so an offline launch follows it too.
 
 ## 5. Entry points
 
@@ -372,7 +383,7 @@ Your privacy policy should mention customer support messages and name the AI pro
 
 - [ ] Dashboard: iOS and Android platforms, bundle ID, Firebase project, accent, team photo
 - [ ] Package added; plugin in `app.json` with both App IDs; new development build
-- [ ] `hailbell.ts` with `configure`, `teamPhoto`, metadata, placements and `onPaywall`
+- [ ] `hailbell.ts` with `configure`, metadata, placements and `onPaywall`
 - [ ] Entry points: Profile row, header button with `useHailbellUnread`, quick action, support bar
 - [ ] Push: permission, `setPushToken` on both platforms, `handleMessage` in the foreground and background, taps
 - [ ] `deleteData()` in account deletion, `reset()` on sign-out

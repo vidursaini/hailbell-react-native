@@ -54,6 +54,10 @@ object HailbellPush {
     @JvmStatic
     fun isHailbell(data: Map<String, String>): Boolean = data.containsKey("hailbell") || data.containsKey("hb")
 
+    /** What a tap on a chat reply notification starts. The chat's singleTop launch mode makes it reuse a chat already on top. */
+    internal fun chatTapIntent(context: Context): Intent =
+        Intent(context, ChatActivity::class.java).setAction(OPEN_ACTION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
     /**
      * Shows a campaign push (always: they are data-only) or a reply that arrived while the app was open
      * (only when the chat isn't on screen; in the background Android shows replies by itself). Returns
@@ -70,8 +74,7 @@ object HailbellPush {
         if (!isHailbell(data)) return false
         if (ChatActivity.visible) return true
         if (!canNotify(context)) return true
-        val open = Intent(context, ChatActivity::class.java).setAction(OPEN_ACTION).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val tap = PendingIntent.getActivity(context, 0, chatTapIntent(context), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val note = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(smallIcon(context))
             .setContentTitle(title ?: L10n.text("supportTitle", mapOf("name" to appLabel(context))).trim())

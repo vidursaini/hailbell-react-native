@@ -49,6 +49,8 @@ internal data class Appearance(
     val placeholder: String? = null,
     val agentNames: Boolean? = null,
     val teamPhotos: Boolean? = null,
+    /** "team" when every reply is signed with one team name and no personal photo, else "person". */
+    val agentIdentity: String? = null,
     val avatarUrl: String? = null,
     /** Quick topics on an empty chat. Null means the built-in ones, an empty list turns them off. */
     val topics: List<String>? = null,
@@ -71,7 +73,7 @@ internal data class Appearance(
 
     fun json(): JSONObject = JSONObject().putOpt("title", title).putOpt("subtitle", subtitle).putOpt("attachments", attachments)
         .putOpt("welcomeTitle", welcomeTitle).putOpt("welcomeText", welcomeText).putOpt("placeholder", placeholder)
-        .putOpt("agentNames", agentNames).putOpt("teamPhotos", teamPhotos).putOpt("avatarUrl", avatarUrl)
+        .putOpt("agentNames", agentNames).putOpt("teamPhotos", teamPhotos).putOpt("agentIdentity", agentIdentity).putOpt("avatarUrl", avatarUrl)
         .putOpt("topics", topics?.let { JSONArray(it) }).putOpt("light", light?.json()).putOpt("dark", dark?.json())
 
     companion object {
@@ -84,6 +86,7 @@ internal data class Appearance(
             placeholder = o.optStringOrNull("placeholder"),
             agentNames = o.optBoolOrNull("agentNames"),
             teamPhotos = o.optBoolOrNull("teamPhotos"),
+            agentIdentity = o.optStringOrNull("agentIdentity"),
             avatarUrl = o.optStringOrNull("avatarUrl"),
             topics = o.optJSONArray("topics")?.let { a -> (0 until a.length()).map { a.optString(it) } },
             light = o.optJSONObject("light")?.let(Palette::parse),
@@ -92,12 +95,18 @@ internal data class Appearance(
     }
 }
 
-/** The person who answers, as customers see them. `avatarUrl` is relative to the API's base URL. */
-internal data class TeamMember(val name: String, val avatarUrl: String?) {
-    fun json(): JSONObject = JSONObject().put("name", name).putOpt("avatarUrl", avatarUrl)
+/**
+ * The person who answers, as customers see them in this app. `avatarUrl` is relative to the API's
+ * base URL. `photo` is false when no personal photo may show in this app (replies signed as the team,
+ * photos off, or the person chose no photo here), so a photo bundled in the app stays hidden too.
+ * `profilePhoto` is true when `avatarUrl` is their Profile photo (no photo of its own for this app),
+ * so a photo bundled in the app, of the same person, may stand in for it.
+ */
+internal data class TeamMember(val name: String, val avatarUrl: String?, val photo: Boolean? = null, val profilePhoto: Boolean? = null) {
+    fun json(): JSONObject = JSONObject().put("name", name).putOpt("avatarUrl", avatarUrl).putOpt("photo", photo).putOpt("profilePhoto", profilePhoto)
 
     companion object {
-        fun parse(o: JSONObject) = TeamMember(o.optString("name"), o.optStringOrNull("avatarUrl"))
+        fun parse(o: JSONObject) = TeamMember(o.optString("name"), o.optStringOrNull("avatarUrl"), o.optBoolOrNull("photo"), o.optBoolOrNull("profilePhoto"))
     }
 }
 
@@ -112,12 +121,14 @@ data class Message(
     /** ms since 1970 */
     val createdAt: Double,
     val card: Card?,
+    /** The photo of the teammate who wrote this reply, in this app. Relative to the API's base URL. */
+    val authorAvatarUrl: String? = null,
 ) {
     val isMine: Boolean get() = author == "user"
 
     internal fun json(): JSONObject = JSONObject().put("id", id).put("author", author).putOpt("authorName", authorName)
         .put("body", body).put("attachments", JSONArray(attachments.map { it.json() })).putOpt("clientId", clientId)
-        .put("createdAt", createdAt).putOpt("card", card?.json())
+        .put("createdAt", createdAt).putOpt("card", card?.json()).putOpt("authorAvatarUrl", authorAvatarUrl)
 
     internal companion object {
         fun parse(o: JSONObject) = Message(
@@ -129,6 +140,7 @@ data class Message(
             clientId = o.optStringOrNull("clientId"),
             createdAt = o.getDouble("createdAt"),
             card = o.optJSONObject("card")?.let(Card::parse),
+            authorAvatarUrl = o.optStringOrNull("authorAvatarUrl"),
         )
     }
 }

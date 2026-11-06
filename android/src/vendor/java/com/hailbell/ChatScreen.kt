@@ -52,7 +52,7 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
     val error by model.errorText.collectAsState()
     val ask by model.notifyAsk.state.collectAsState()
     val list = rememberLazyListState()
-    val photo = model.teamPhoto(appearance, team)
+    val bundledAllowed by model.bundledPhotoAllowed.collectAsState()
 
     // New messages, a reply arriving, "Typing…" or a sent message: keep the newest in view.
     val tail = "${messages.size}|${messages.lastOrNull()?.id}|${pending.size}|$typing|$ask"
@@ -82,9 +82,10 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val i = messages.indexOf(m)
                     if (i == 0 || !sameDay(messages[i - 1].createdAt, m.createdAt)) DayChip(m.createdAt, theme)
+                    val photo = model.photo(m, appearance, team)
                     MessageRow(
-                        m, caption(model, m, messages, appearance), if (m.isMine) null else photo,
-                        if (m.isMine) null else Hailbell.teamPhoto, (m.author == "agent" || m.author == "bot") && model.endsRun(m, messages),
+                        m, caption(model, m, messages, appearance), photo,
+                        model.bundledPhoto(m, bundledAllowed, appearance, team), (m.author == "agent" || m.author == "bot") && model.endsRun(m, messages),
                         model::resolve, theme,
                     ) { model.cardAction(m, it) }
                     model.delivery(m, messages, readAt, deliveredAt)?.let { Ticks(it, theme) }
@@ -129,8 +130,11 @@ private fun Header(model: ChatModel, theme: ChatTheme, onClose: () -> Unit) {
     val appearance by model.appearance.collectAsState()
     val team by model.team.collectAsState()
     val appName by model.appName.collectAsState()
-    val photoUrl = model.teamPhoto(appearance, team) ?: appearance.avatarUrl?.let(model::resolve)
-    val hasPhoto = Hailbell.teamPhoto != null || photoUrl != null
+    val bundledAllowed by model.bundledPhotoAllowed.collectAsState()
+    val teamPhoto = model.teamPhoto(appearance, team)
+    val bundled = model.bundledPhoto(bundledAllowed)
+    val photoUrl = teamPhoto ?: appearance.avatarUrl?.let(model::resolve)
+    val hasPhoto = bundled != null || photoUrl != null
     val title = appearance.title ?: L10n.text("supportTitle", mapOf("name" to appName)).trim()
     Column {
         Row(
@@ -145,7 +149,7 @@ private fun Header(model: ChatModel, theme: ChatTheme, onClose: () -> Unit) {
                 }
                 if (hasPhoto) {
                     Box {
-                        Avatar(Hailbell.teamPhoto, photoUrl, 40.dp, theme, Modifier.background(theme.background, CircleShape).padding(2.dp))
+                        Avatar(bundled, photoUrl, 40.dp, theme, Modifier.background(theme.background, CircleShape).padding(2.dp))
                         PresenceDot(model, theme, Modifier.align(Alignment.BottomEnd))
                     }
                 }

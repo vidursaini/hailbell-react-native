@@ -36,6 +36,8 @@ struct Appearance: Codable, Equatable {
     var placeholder: String?
     var agentNames: Bool?
     var teamPhotos: Bool?
+    /// "team" when every reply is signed with one team name and no personal photo, else "person".
+    var agentIdentity: String?
     var avatarUrl: String?
     /// Quick topics on an empty chat. Nil means the built-in ones, an empty list turns them off.
     var topics: [String]?
@@ -43,16 +45,24 @@ struct Appearance: Codable, Equatable {
     var dark: Palette?
 }
 
-/// The person who answers, as customers see them. `avatarUrl` is relative to the API's base URL.
+/// The person who answers, as customers see them in this app. `avatarUrl` is relative to the API's
+/// base URL. `photo` is false when no personal photo may show in this app (replies signed as the team,
+/// photos off, or the person chose no photo here), so a photo bundled in the app stays hidden too.
+/// `profilePhoto` is true when `avatarUrl` is their Profile photo (no photo of its own for this app),
+/// so a photo bundled in the app, of the same person, may stand in for it.
 struct TeamMember: Codable, Equatable {
     let name: String
     let avatarUrl: String?
+    var photo: Bool? = nil
+    var profilePhoto: Bool? = nil
 }
 
 public struct Message: Codable, Identifiable, Equatable {
     public let id: String
     public let author: String          // "user" | "agent" | "bot" (the AI) | "system"
     public let authorName: String?
+    /// The photo of the teammate who wrote this reply, in this app. Relative to the API's base URL.
+    public let authorAvatarUrl: String?
     public let body: String
     public let attachments: [Attachment]
     public let clientId: String?
@@ -67,6 +77,7 @@ public struct Message: Codable, Identifiable, Equatable {
         id = try c.decode(String.self, forKey: .id)
         author = try c.decode(String.self, forKey: .author)
         authorName = try c.decodeIfPresent(String.self, forKey: .authorName)
+        authorAvatarUrl = try c.decodeIfPresent(String.self, forKey: .authorAvatarUrl)
         body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""   // empty for image-only messages
         attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
         clientId = try c.decodeIfPresent(String.self, forKey: .clientId)

@@ -56,8 +56,11 @@ object Hailbell {
     var onPaywall: ((placement: String, purchased: () -> Unit) -> Unit)? = null
 
     /**
-     * The photo of the person who replies, bundled in your app so the chat shows it at once, offline
-     * too. Without it the chat loads the photo set in the dashboard.
+     * Deprecated: set the photo in the dashboard instead (Profile, per app), which you can change
+     * without an app release. A photo bundled here shows only until the chat first hears from
+     * Hailbell, and after that only while the dashboard has no photo of its own for this app. It
+     * never shows once the app signs replies as the team, turns photos off, or picks a photo (or no
+     * photo) for this app in the dashboard.
      */
     var teamPhoto: Bitmap? = null
 

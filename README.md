@@ -30,7 +30,7 @@ Hailbell.open();
 | `useHailbellUnread()` | The unread count as a React hook, for a badge. |
 | `Hailbell.reset()` | On sign-out: clears the identity and the cached chat. |
 | `await Hailbell.deleteData()` | Deletes the user's chat, images and details from Hailbell. Rejects if the server can't be reached. |
-| `Hailbell.teamPhoto` | `require('./photo.png')`, a URI, or `null` for the dashboard photo. |
+| `Hailbell.teamPhoto` | Deprecated: set the photo in the dashboard. A bundled photo shows only until the chat hears from Hailbell, and never once the dashboard signs replies as the team, turns photos off or sets a photo for this app. |
 | `Hailbell.darkMode` | `null` follows the phone; `true` or `false` fixes the chat's look. |
 | `Hailbell.asksForNotifications` | Default true. Set false if your app asks for notification permission itself. |
 | `Hailbell.push` | The same object as `HailbellPush`. |

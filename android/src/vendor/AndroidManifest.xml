@@ -8,9 +8,12 @@
         <activity
             android:name="com.hailbell.ChatActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Hailbell.Chat"
             android:windowSoftInputMode="adjustResize">
-            <!-- Chat reply notifications carry this click action, so a tap opens the chat. -->
+            <!-- Chat reply notifications carry this click action, so a tap opens the chat. singleTop: a
+                 tap while the chat is already open (behind the home screen) brings that chat back instead
+                 of stacking a second one on it. -->
             <intent-filter>
                 <action android:name="HAILBELL_OPEN_CHAT" />
                 <category android:name="android.intent.category.DEFAULT" />

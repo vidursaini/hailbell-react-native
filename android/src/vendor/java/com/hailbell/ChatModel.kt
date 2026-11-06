@@ -31,6 +31,11 @@ internal class ChatModel {
     val assistant = MutableStateFlow<Assistant?>(null)
     val appearance = MutableStateFlow(Appearance())
     val team = MutableStateFlow<List<TeamMember>>(emptyList())
+    /**
+     * Whether the last answer from Hailbell lets a photo bundled in the app show (see [bundledPhoto]).
+     * Kept across launches and sign-outs, so an offline launch follows the dashboard too.
+     */
+    val bundledPhotoAllowed = MutableStateFlow(true)
     val hasMore = MutableStateFlow(false)
     /** When you last read the chat, and when the customer's messages last reached you, for the ticks under their messages. */
     val agentReadAt = MutableStateFlow(0.0)
@@ -51,6 +56,7 @@ internal class ChatModel {
     private var conversationId: String? = null
 
     fun attach() {
+        bundledPhotoAllowed.value = Client.prefs(Hailbell.context).getBoolean(BUNDLED_PHOTO_KEY, true)
         restore()
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) = backgrounded()
@@ -78,6 +84,27 @@ internal class ChatModel {
 
     fun resolve(path: String): String? = client?.resolve(path)
 
+    /** The photo beside a reply: its teammate's photo in this app, else the header's. None when photos are off. */
+    fun photo(m: Message, appearance: Appearance, team: List<TeamMember>): String? {
+        if (m.isMine || appearance.teamPhotos == false) return null
+        return m.authorAvatarUrl?.let { client?.resolve(it) } ?: teamPhoto(appearance, team)
+    }
+
+    /**
+     * [Hailbell.teamPhoto], when the dashboard allows it. The server decides who customers see, so a
+     * photo bundled in the app shows only before the chat has heard from Hailbell, or while Hailbell
+     * says this app shows the owner's Profile photo (or none at all). Never once the app signs replies
+     * as the team, turns photos off, or sets its own photo or "no photo" for this app.
+     */
+    fun bundledPhoto(allowed: Boolean) = if (allowed) Hailbell.teamPhoto else null
+
+    /**
+     * The bundled photo beside one reply: only on replies with no photo of their own, or with the
+     * header's photo (the same person), so another teammate never gets the bundled face.
+     */
+    fun bundledPhoto(m: Message, allowed: Boolean, appearance: Appearance, team: List<TeamMember>) =
+        bundledPhoto(allowed)?.takeIf { !m.isMine && appearance.teamPhotos != false && (m.authorAvatarUrl == null || m.authorAvatarUrl == team.firstOrNull()?.avatarUrl) }
+
     /** The first and last message of a run from the same sender, for names and photos. */
     fun startsRun(m: Message, list: List<Message>): Boolean {
         val i = list.indexOfFirst { it.id == m.id }
@@ -99,6 +126,8 @@ internal class ChatModel {
         assistant.value = session.assistant
         appearance.value = session.appearance ?: Appearance()
         team.value = session.team
+        bundledPhotoAllowed.value = allowsBundledPhoto(appearance.value, session.team)
+        Client.prefs(Hailbell.context).edit().putBoolean(BUNDLED_PHOTO_KEY, bundledPhotoAllowed.value).apply()
         agentActiveAt.value = session.agentActiveAt
         errorText.value = null
         if (conversationId != session.conversationId) {
@@ -403,4 +432,13 @@ internal class ChatModel {
             }
         }
     }
+}
+
+internal const val BUNDLED_PHOTO_KEY = "bundledPhotoAllowed"
+
+/** Whether Hailbell's answer for this app leaves room for a photo bundled in the app. */
+internal fun allowsBundledPhoto(appearance: Appearance, team: List<TeamMember>): Boolean {
+    if (appearance.agentIdentity == "team" || appearance.teamPhotos == false) return false
+    val first = team.firstOrNull() ?: return true
+    return first.photo != false && (first.avatarUrl == null || first.profilePhoto == true)
 }

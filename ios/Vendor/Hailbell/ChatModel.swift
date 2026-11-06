@@ -18,6 +18,9 @@ final class ChatModel: ObservableObject {
     @Published private(set) var assistant: Assistant?
     @Published private(set) var appearance = Appearance()
     @Published private(set) var team: [TeamMember] = []
+    /// Whether the last answer from Hailbell lets a photo bundled in the app show (see `bundledPhoto`).
+    /// Kept across launches and sign-outs, so an offline launch follows the dashboard too.
+    @Published private(set) var bundledPhotoAllowed = UserDefaults.standard.object(forKey: ChatModel.bundledPhotoKey) as? Bool ?? true
     @Published private(set) var hasMore = false
     /// When you last read the chat, and when the customer's messages last reached you, for the ticks under their messages.
     @Published private(set) var agentReadAt: Double = 0
@@ -68,6 +71,36 @@ final class ChatModel: ObservableObject {
         return URL(string: path, relativeTo: base)
     }
 
+    /// The photo beside a reply: its teammate's photo in this app, else the header's. None when the
+    /// dashboard turned photos off.
+    func photo(for m: Message) -> URL? {
+        guard !m.isMine, appearance.teamPhotos != false else { return nil }
+        if let path = m.authorAvatarUrl, let base = baseURL { return URL(string: path, relativeTo: base) }
+        return teamPhoto
+    }
+
+    /// `Hailbell.teamPhoto`, when the dashboard allows it. The server decides who customers see, so a
+    /// photo bundled in the app shows only before the chat has heard from Hailbell, or while Hailbell
+    /// says this app shows the owner's Profile photo (or none at all). Never once the app signs replies
+    /// as the team, turns photos off, or sets its own photo or "no photo" for this app.
+    var bundledPhoto: UIImage? { bundledPhotoAllowed ? Hailbell.teamPhoto : nil }
+
+    /// The bundled photo beside one reply: only on replies with no photo of their own, or with the
+    /// header's photo (the same person), so another teammate never gets the bundled face.
+    func bundledPhoto(for m: Message) -> UIImage? {
+        guard !m.isMine, appearance.teamPhotos != false, let image = bundledPhoto else { return nil }
+        if let path = m.authorAvatarUrl, path != team.first?.avatarUrl { return nil }
+        return image
+    }
+
+    nonisolated static let bundledPhotoKey = "hailbell.bundledPhotoAllowed"
+
+    nonisolated static func allowsBundledPhoto(appearance: Appearance, team: [TeamMember]) -> Bool {
+        if appearance.agentIdentity == "team" || appearance.teamPhotos == false { return false }
+        guard let first = team.first else { return true }
+        return first.photo != false && (first.avatarUrl == nil || first.profilePhoto == true)
+    }
+
     /// The first and last message of a run from the same sender, for names and photos.
     func startsRun(_ m: Message) -> Bool {
         guard let i = messages.firstIndex(where: { $0.id == m.id }), i > 0 else { return true }
@@ -93,6 +126,8 @@ final class ChatModel: ObservableObject {
         assistant = session.assistant
         appearance = session.appearance ?? Appearance()
         team = session.team ?? []
+        bundledPhotoAllowed = Self.allowsBundledPhoto(appearance: appearance, team: team)
+        UserDefaults.standard.set(bundledPhotoAllowed, forKey: Self.bundledPhotoKey)
         agentActiveAt = session.agentActiveAt
         errorText = nil
         if conversationId != session.conversationId {
@@ -219,11 +254,18 @@ final class ChatModel: ObservableObject {
     /// in the chat and sends replies as pushes. iOS suspends the app without closing it otherwise.
     func backgrounded() { disconnect() }
 
-    /// Back in front with the chat on screen: catch up on what arrived meanwhile, then reconnect.
-    func foregrounded() {
+    /// The chat is on screen, in the sheet `Hailbell.open()` presents or wherever the app placed
+    /// `HailbellChatView`. Stays true while the app is in the background with the chat open.
+    var isOnScreen: Bool { visible }
+
+    /// Fetches what arrived while the chat wasn't listening, reconnects and marks it read.
+    func catchUp() {
         guard visible else { return }
         Task { await loadHistory(); connect(); markRead() }
     }
+
+    /// Back in front with the chat on screen: catch up on what arrived meanwhile, then reconnect.
+    func foregrounded() { catchUp() }
 
     private func markRead() {
         guard visible, let client = owner?.client else { return }

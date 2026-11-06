@@ -24,8 +24,9 @@ struct ChatView: View {
                         }
                         ForEach(model.messages) { m in
                             if startsDay(m) { DayChip(date: m.date, theme: theme) }
-                            MessageRow(message: m, caption: caption(m), photo: m.isMine ? nil : model.teamPhoto,
-                                       bundledPhoto: m.isMine ? nil : Hailbell.teamPhoto,
+                            let photo = model.photo(for: m)
+                            MessageRow(message: m, caption: caption(m), photo: photo,
+                                       bundledPhoto: model.bundledPhoto(for: m),
                                        showsFace: (m.author == "agent" || m.author == "bot") && model.endsRun(m), baseURL: model.baseURL,
                                        theme: theme) { model.cardAction(m, $0) }
                                 .id(m.id)
@@ -109,7 +110,7 @@ struct ChatView: View {
             HStack(spacing: -8) {
                 if hasPhoto {
                     SupportMark(size: 40, theme: theme)
-                    Avatar(image: Hailbell.teamPhoto, url: model.teamPhoto ?? avatarURL, size: 40, theme: theme)
+                    Avatar(image: model.bundledPhoto, url: model.teamPhoto ?? avatarURL, size: 40, theme: theme)
                         .padding(2)
                         .background(theme.background, in: Circle())
                         .overlay(alignment: .bottomTrailing) { presenceDot(theme) }
@@ -138,7 +139,7 @@ struct ChatView: View {
         .overlay(alignment: .bottom) { if !theme.glass { Divider() } }
     }
 
-    private var hasPhoto: Bool { Hailbell.teamPhoto != nil || (model.teamPhoto ?? avatarURL) != nil }
+    private var hasPhoto: Bool { model.bundledPhoto != nil || (model.teamPhoto ?? avatarURL) != nil }
 
     /// Green while the team was active in the last 5 minutes, grey after. Rechecked every minute.
     private func presenceDot(_ theme: ChatTheme) -> some View {
