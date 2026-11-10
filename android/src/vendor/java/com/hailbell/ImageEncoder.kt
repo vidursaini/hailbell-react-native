@@ -15,20 +15,25 @@ internal object ImageEncoder {
 
     /**
      * A JPEG under the server's 1.5 MB limit: at most 1600 pixels on the long side, stepping the
-     * quality down until it fits.
+     * quality down from the first of [qualities] until it fits.
      */
-    fun chatJpeg(image: Bitmap): Jpeg? {
-        val longest = max(image.width, image.height)
-        val scale = if (longest > 1600) 1600f / longest else 1f
-        val w = (image.width * scale).roundToInt()
-        val h = (image.height * scale).roundToInt()
-        val resized = if (scale < 1f) Bitmap.createScaledBitmap(image, w, h, true) else image
-        for (quality in listOf(80, 60, 40)) {
+    fun chatJpeg(image: Bitmap, qualities: List<Int> = listOf(80, 60, 40)): Jpeg? {
+        val (w, h) = fit(image.width, image.height, 1600)
+        val resized = if (w != image.width || h != image.height) Bitmap.createScaledBitmap(image, w, h, true) else image
+        for (quality in qualities) {
             val out = ByteArrayOutputStream()
             resized.compress(Bitmap.CompressFormat.JPEG, quality, out)
             if (out.size() < 1_400_000) return Jpeg(out.toByteArray(), w, h)
         }
         return null
+    }
+
+    /** The size [width] by [height] scaled down so neither side is over [limit]. Smaller sizes stay as they are. */
+    fun fit(width: Int, height: Int, limit: Int): Pair<Int, Int> {
+        val longest = max(width, height)
+        if (longest <= limit) return width to height
+        val scale = limit.toFloat() / longest
+        return (width * scale).roundToInt().coerceIn(1, limit) to (height * scale).roundToInt().coerceIn(1, limit)
     }
 
     /** A picked photo, upright and at most 2400 pixels on the long side so a few fit in memory. */

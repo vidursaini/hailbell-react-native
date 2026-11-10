@@ -68,6 +68,8 @@ public struct Message: Codable, Identifiable, Equatable {
     public let clientId: String?
     public let createdAt: Double       // ms since 1970
     public var card: Card?
+    /// Set on a bug report the customer sent from the report screen: their app, device and last screens.
+    public let report: ReportDetails?
 
     var isMine: Bool { author == "user" }
     var date: Date { Date(timeIntervalSince1970: createdAt / 1000) }
@@ -83,7 +85,23 @@ public struct Message: Codable, Identifiable, Equatable {
         clientId = try c.decodeIfPresent(String.self, forKey: .clientId)
         createdAt = try c.decode(Double.self, forKey: .createdAt)
         card = try c.decodeIfPresent(Card.self, forKey: .card)
+        report = try c.decodeIfPresent(ReportDetails.self, forKey: .report)
     }
+}
+
+/// What a bug report says about where it came from. Every field is optional, since the server may
+/// leave any of them out.
+public struct ReportDetails: Codable, Equatable {
+    public let appVersion: String?
+    public let build: String?
+    /// The model code, e.g. "iPhone17,2".
+    public let device: String?
+    /// The model's name, e.g. "iPhone 16 Pro Max", when the server knows it.
+    public let deviceName: String?
+    public let os: String?
+    public let locale: String?
+    /// The last screens the customer saw, oldest first.
+    public let screens: [String]?
 }
 
 /// An image in a message. `url` is relative to the API's base URL.
@@ -150,9 +168,13 @@ final class Client {
         let _: Empty = try await request("DELETE", "/v1/me")
     }
 
-    func send(_ text: String, attachments: [String] = [], clientId: String) async throws -> Message {
+    /// Posts a message. `report` turns it into a bug report (see `Hailbell.reportDetails`); the text may
+    /// then be empty.
+    func send(_ text: String, attachments: [String] = [], clientId: String, report: [String: Any]? = nil) async throws -> Message {
         struct Out: Decodable { let message: Message }
-        let out: Out = try await request("POST", "/v1/messages", body: ["text": text, "attachments": attachments, "clientId": clientId])
+        var body: [String: Any] = ["text": text, "attachments": attachments, "clientId": clientId]
+        if let report { body["report"] = report }
+        let out: Out = try await request("POST", "/v1/messages", body: body)
         return out.message
     }
 

@@ -151,6 +151,18 @@ class HailbellModule : Module() {
       uri == null || bitmap != null
     }
 
+    Function("trackScreen") { name: String ->
+      onMain { Hailbell.trackScreen(name) }
+    }
+
+    Function("reportBug") {
+      onMain { appContext.currentActivity?.let { Hailbell.reportBug(it) } }
+    }
+
+    Function("setShakeToReport") { enabled: Boolean ->
+      onMain { Hailbell.shakeToReport = enabled }
+    }
+
     Function("setAsksForNotifications") { asks: Boolean ->
       onMain { Hailbell.asksForNotifications = asks }
     }

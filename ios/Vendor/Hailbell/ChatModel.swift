@@ -312,6 +312,25 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// Sends a bug report from the report screen: uploads the screenshot, if any, then posts the text
+    /// with the device details. Throws so the report screen can show the error and keep what they wrote.
+    /// The message joins the thread like any other once the server has it.
+    func sendReport(_ raw: String, screenshot: UIImage?, report: [String: Any]) async throws {
+        guard let client = owner?.client, client.token != nil else {
+            throw APIError(status: 401, message: "Chat is still connecting")
+        }
+        var ids: [String] = []
+        if let screenshot {
+            guard let jpeg = screenshot.chatJPEG() else { throw APIError(status: 0, message: "Could not read the screenshot") }
+            ids.append(try await client.upload(jpeg: jpeg.data, width: jpeg.width, height: jpeg.height))
+        }
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = try await client.send(text, attachments: ids, clientId: UUID().uuidString, report: report)
+        insert(message)
+        saveCache()
+        errorText = nil
+    }
+
     /// The customer tapped a card's button ("tapped"), chose "Not now" ("dismissed") or bought from an
     /// offer ("purchased"). States only move forward.
     func cardAction(_ message: Message, _ action: String) {
@@ -451,12 +470,15 @@ final class ChatModel: ObservableObject {
 }
 
 extension UIImage {
-    /// A JPEG under the server's 1.5 MB limit: at most 1600 points on the long side, stepping the
-    /// quality down until it fits.
-    func chatJPEG() -> (data: Data, width: Int, height: Int)? {
-        let longest = max(size.width, size.height)
-        let scale = longest > 1600 ? 1600 / longest : 1
-        let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+    /// A JPEG under the server's 1.5 MB limit: at most `maxSide` pixels on the long side, stepping the
+    /// quality down until it fits. Measured in pixels, so a screenshot taken at the screen's 3x scale
+    /// keeps its detail instead of shrinking to its size in points.
+    func chatJPEG(maxSide: CGFloat = 1600) -> (data: Data, width: Int, height: Int)? {
+        let pixels = CGSize(width: size.width * scale, height: size.height * scale)
+        let longest = max(pixels.width, pixels.height)
+        guard longest > 0 else { return nil }
+        let factor = longest > maxSide ? maxSide / longest : 1
+        let target = CGSize(width: (pixels.width * factor).rounded(), height: (pixels.height * factor).rounded())
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in draw(in: CGRect(origin: .zero, size: target)) }

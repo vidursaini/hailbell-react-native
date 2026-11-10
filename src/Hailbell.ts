@@ -25,6 +25,7 @@ let tokenSubscription: { remove(): void } | null = null;
 let teamPhoto: TeamPhoto = null;
 let asksForNotifications = true;
 let darkMode: boolean | null = null;
+let shakeToReport = false;
 
 function listenForTokenRequests() {
   const native = getNative();
@@ -136,6 +137,32 @@ export const Hailbell = {
   /** Records a signal such as `paywall_decline` or `chat_opened`. Signals show next to the chat. */
   track(event: string, properties?: Record<string, Value | null | undefined>) {
     getNative()?.track(event, properties ? stringMap(properties) : null);
+  },
+
+  /**
+   * The name of the screen the user is on, such as `Settings`. The last 10 are sent with a bug
+   * report, so you can see how they got there. Nothing else is done with them.
+   */
+  trackScreen(name: string) {
+    getNative()?.trackScreen(String(name ?? ''));
+  },
+
+  /**
+   * Opens the bug report screen, for a "Report a problem" button. It takes a screenshot of the
+   * current screen first, which the user can mark up or remove before sending. The report lands in
+   * their chat, tagged as a bug report, with the app version, device, OS, locale and last screens.
+   */
+  reportBug() {
+    getNative()?.reportBug();
+  },
+
+  /** Shaking the device opens the bug report screen. Off by default. */
+  get shakeToReport(): boolean {
+    return shakeToReport;
+  },
+  set shakeToReport(enabled: boolean) {
+    shakeToReport = Boolean(enabled);
+    getNative()?.setShakeToReport(shakeToReport);
   },
 
   /** The paywall placements an offer can open, so you can pick them by name in the dashboard and Discord. */

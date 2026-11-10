@@ -30,6 +30,9 @@ export declare class HailbellNativeModule extends NativeModule<NativeEvents> {
   provideFirebaseToken(requestId: string, token: string | null): void;
   setMetadata(metadata: Record<string, string>): void;
   track(event: string, properties: Record<string, string> | null): void;
+  trackScreen(name: string): void;
+  reportBug(): void;
+  setShakeToReport(enabled: boolean): void;
   setPaywallPlacements(placements: string[]): void;
   setPaywallHandler(enabled: boolean): void;
   paywallPurchased(requestId: string): void;

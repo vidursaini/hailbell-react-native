@@ -77,6 +77,17 @@ object Hailbell {
      */
     var darkMode: Boolean? = null
 
+    /**
+     * Off by default. When true, shaking the phone while one of your activities is on screen opens
+     * the report screen, the same as [reportBug]. The accelerometer is only listened to while this is
+     * on and your app is on screen. Set it on the main thread.
+     */
+    var shakeToReport: Boolean = false
+        set(value) {
+            field = value
+            if (isConfigured) BugReports.updateShake()
+        }
+
     /** Call once at launch, from `Application.onCreate`, before anything else. */
     @JvmStatic
     @JvmOverloads
@@ -85,6 +96,7 @@ object Hailbell {
         client = Client(this.context, appId, baseUrl)
         chat.attach()
         HailbellPush.createChannel(this.context)
+        BugReports.watch(this.context)
         scope.launch { refreshSession() }
     }
 
@@ -170,6 +182,28 @@ object Hailbell {
     @JvmStatic
     fun open(activity: Activity) {
         activity.startActivity(Intent(activity, ChatActivity::class.java))
+    }
+
+    /**
+     * Remembers the screen the user is on, such as "Settings". A bug report carries the last 10, so
+     * you can see how they got there. Kept in memory only, and sent only with a report.
+     */
+    @JvmStatic
+    fun trackScreen(name: String) = BugReports.track(name)
+
+    /**
+     * Takes a screenshot of [activity] and opens the report screen over it, for a "Report a problem"
+     * button. The user can mark up or remove the screenshot, describe the problem and send it. The
+     * report lands in the chat inbox with the app version, device, OS version, language and the last
+     * screens from [trackScreen]. Nothing is sent until they tap Send.
+     */
+    @JvmStatic
+    fun reportBug(activity: Activity) {
+        if (!isConfigured) {
+            android.util.Log.w("Hailbell", "reportBug before Hailbell.configure")
+            return
+        }
+        BugReports.open(activity)
     }
 
     // internal

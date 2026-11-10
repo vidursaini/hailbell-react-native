@@ -141,6 +141,18 @@ public final class HailbellModule: Module {
       return uri == nil || image != nil
     }
 
+    Function("trackScreen") { (name: String) in
+      HailbellRN.onMain { Hailbell.trackScreen(name) }
+    }
+
+    Function("reportBug") {
+      HailbellRN.onMain { Hailbell.reportBug() }
+    }
+
+    Function("setShakeToReport") { (enabled: Bool) in
+      HailbellRN.onMain { Hailbell.shakeToReport = enabled }
+    }
+
     Function("setAsksForNotifications") { (asks: Bool) in
       HailbellRN.onMain { Hailbell.asksForNotifications = asks }
     }

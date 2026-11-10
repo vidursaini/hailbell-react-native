@@ -111,6 +111,17 @@ describe('metadata, signals and placements', () => {
     ]);
   });
 
+  it('passes bug report calls straight through', () => {
+    api.Hailbell.trackScreen('Settings');
+    api.Hailbell.reportBug();
+    expect(api.Hailbell.shakeToReport).toBe(false);
+    api.Hailbell.shakeToReport = true;
+    expect(api.Hailbell.shakeToReport).toBe(true);
+    expect(native.trackScreen).toHaveBeenCalledWith('Settings');
+    expect(native.reportBug).toHaveBeenCalledTimes(1);
+    expect(native.setShakeToReport).toHaveBeenCalledWith(true);
+  });
+
   it('reports placements', () => {
     api.Hailbell.setPaywallPlacements(['winback', 'support_offer']);
     expect(native.setPaywallPlacements).toHaveBeenCalledWith(['winback', 'support_offer']);

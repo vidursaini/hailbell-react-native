@@ -34,6 +34,7 @@ struct MessageRow: View {
                     } else if !message.body.isEmpty {
                         Bubble(text: message.body, mine: mine, theme: theme)
                     }
+                    if mine, message.report != nil { BugReportTag() }
                 }
             }
         }

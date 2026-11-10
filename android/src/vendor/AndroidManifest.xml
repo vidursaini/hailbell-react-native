@@ -19,6 +19,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- The bug report screen, opened by Hailbell.reportBug and by a shake. -->
+        <activity
+            android:name="com.hailbell.BugReportActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Hailbell.Chat"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name="com.hailbell.PushOpenActivity"
             android:excludeFromRecents="true"

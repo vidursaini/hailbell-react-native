@@ -45,6 +45,11 @@ public final class Hailbell: ObservableObject {
     /// its own fixed look, so the chat matches the app rather than the system: an always-dark app sets true.
     public static var darkMode: Bool?
 
+    /// When true, shaking the phone opens the report screen (see `reportBug()`). Off by default.
+    public static var shakeToReport = false {
+        didSet { if shakeToReport { ShakeDetector.install() } }
+    }
+
     private init() {}
 
     /// Call once at launch, before anything else.
@@ -52,6 +57,7 @@ public final class Hailbell: ObservableObject {
         let hb = shared
         hb.client = Client(appId: appId, baseURL: baseURL)
         hb.chat.attach(to: hb)
+        if shakeToReport { ShakeDetector.install() }
         Task { await hb.refreshSession() }
     }
 
@@ -105,6 +111,19 @@ public final class Hailbell: ObservableObject {
         shared.identity = Identity(metadata: shared.identity.metadata)
         shared.chat.reset()
         await shared.refreshSession()
+    }
+
+    /// Notes the screen the user is on, e.g. "Settings". A bug report carries the last 10, so you can
+    /// see how they got there. Kept in memory only and sent only with a report the user chooses to send.
+    public static func trackScreen(_ name: String) {
+        shared.screens.add(name)
+    }
+
+    /// Opens the report screen, for a "Report a problem" button. It takes a screenshot of what is on
+    /// screen first; the user can mark it up or remove it, and nothing is sent until they tap Send.
+    /// The report lands in the chat like any other message, tagged as a bug report.
+    public static func reportBug() {
+        shared.presentReport()
     }
 
     /// Records a signal such as "paywall_decline". Signals show next to the chat and drive nudges later.
@@ -177,6 +196,49 @@ public final class Hailbell: ObservableObject {
 
     /// Where the sheet goes. Tests swap it, since their host has no window.
     var topViewController: () -> UIViewController? = { UIApplication.shared.topViewController }
+
+    // MARK: bug reports
+
+    /// The last screens passed to `trackScreen`.
+    var screens = ScreenTrail()
+
+    /// The report screen while it is up, so a second shake doesn't stack another one.
+    weak var reportSheet: ReportHostingController?
+
+    /// Takes the screenshot for a report. Tests swap it, since their host has no window.
+    var captureScreen: () -> UIImage? = { UIApplication.shared.keyWindow?.hailbellSnapshot() }
+
+    /// Screenshots what is on screen, then presents the report screen over everything else.
+    func presentReport() {
+        if let sheet = reportSheet, !sheet.dismissed { return }
+        let screenshot = captureScreen()
+        guard let top = topViewController() else { return }
+        let host = ReportHostingController(rootView: BugReportScreen(model: chat, screenshot: screenshot))
+        host.modalPresentationStyle = .pageSheet
+        if let dark = Self.darkMode { host.overrideUserInterfaceStyle = dark ? .dark : .light }
+        if let sheet = host.sheetPresentationController {
+            sheet.prefersGrabberVisible = true
+            sheet.detents = [.large()]
+        }
+        reportSheet = host
+        present(host, top)
+    }
+
+    /// The device details sent with a report, from this build and phone.
+    func reportDetails() -> [String: Any] {
+        Self.reportDetails(info: Bundle.main.infoDictionary ?? [:], device: HailbellPush.model,
+                           systemVersion: UIDevice.current.systemVersion, locale: Locale.current.identifier,
+                           screens: screens.names)
+    }
+
+    /// The body's `report` object. Pure, so tests can check it without a device.
+    nonisolated static func reportDetails(info: [String: Any], device: String, systemVersion: String,
+                                          locale: String, screens: [String]) -> [String: Any] {
+        var report: [String: Any] = ["device": device, "os": "iOS \(systemVersion)", "locale": locale, "screens": screens]
+        if let v = info["CFBundleShortVersionString"] as? String { report["appVersion"] = v }
+        if let v = info["CFBundleVersion"] as? String { report["build"] = v }
+        return report
+    }
 
     // MARK: internal
 
@@ -260,10 +322,30 @@ public struct HailbellChatView: View {
 
 extension UIApplication {
     var topViewController: UIViewController? {
-        let scene = connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
-            ?? connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        var top = scene?.windows.first { $0.isKeyWindow }?.rootViewController
+        var top = keyWindow?.rootViewController
         while let presented = top?.presentedViewController { top = presented }
         return top
     }
+
+    /// The key window of the scene in front.
+    var keyWindow: UIWindow? {
+        let scene = connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
+            ?? connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        return scene?.windows.first { $0.isKeyWindow }
+    }
+}
+
+/// The last 10 screens the app reported, oldest first. Repeats in a row count once.
+struct ScreenTrail {
+    static let limit = 10
+    private(set) var names: [String] = []
+
+    mutating func add(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != names.last else { return }
+        names.append(trimmed)
+        if names.count > Self.limit { names.removeFirst(names.count - Self.limit) }
+    }
+
+    mutating func reset() { names = [] }
 }

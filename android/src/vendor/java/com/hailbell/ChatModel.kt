@@ -4,12 +4,14 @@ import android.graphics.Bitmap
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -295,6 +297,24 @@ internal class ChatModel {
                 showError(e, token)
             }
         }
+    }
+
+    /**
+     * Sends a bug report from the report screen: the screenshot (if any) first, then the message with
+     * the device details. Throws on failure so the screen can keep the text and say so. On success the
+     * message is in the chat like any other.
+     */
+    suspend fun sendReport(text: String, screenshot: Bitmap?, report: Map<String, Any>) {
+        val client = client ?: throw ApiError(0, "Hailbell is not configured")
+        val ids = if (screenshot != null) {
+            val jpeg = withContext(Dispatchers.Default) { ImageEncoder.chatJpeg(screenshot, listOf(70, 50, 35)) }
+                ?: throw ApiError(0, "Screenshot too large")
+            listOf(client.upload(jpeg.data, jpeg.width, jpeg.height))
+        } else emptyList()
+        val message = client.send(text.trim(), ids, UUID.randomUUID().toString().uppercase(), report)
+        insert(message)
+        saveCache()
+        errorText.value = null
     }
 
     /**

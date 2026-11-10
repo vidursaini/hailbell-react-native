@@ -123,12 +123,15 @@ data class Message(
     val card: Card?,
     /** The photo of the teammate who wrote this reply, in this app. Relative to the API's base URL. */
     val authorAvatarUrl: String? = null,
+    /** Set on a bug report sent from the report screen: the device details that came with it. */
+    val report: BugReport? = null,
 ) {
     val isMine: Boolean get() = author == "user"
 
     internal fun json(): JSONObject = JSONObject().put("id", id).put("author", author).putOpt("authorName", authorName)
         .put("body", body).put("attachments", JSONArray(attachments.map { it.json() })).putOpt("clientId", clientId)
         .put("createdAt", createdAt).putOpt("card", card?.json()).putOpt("authorAvatarUrl", authorAvatarUrl)
+        .putOpt("report", report?.json())
 
     internal companion object {
         fun parse(o: JSONObject) = Message(
@@ -141,6 +144,37 @@ data class Message(
             createdAt = o.getDouble("createdAt"),
             card = o.optJSONObject("card")?.let(Card::parse),
             authorAvatarUrl = o.optStringOrNull("authorAvatarUrl"),
+            report = o.optJSONObject("report")?.let(BugReport::parse),
+        )
+    }
+}
+
+/**
+ * The details sent with a bug report. Every field is optional. `deviceName` is the readable name the
+ * server found for `device` (for example "Pixel 7a"), when it knows it.
+ */
+data class BugReport(
+    val appVersion: String? = null,
+    val build: String? = null,
+    val device: String? = null,
+    val deviceName: String? = null,
+    val os: String? = null,
+    val locale: String? = null,
+    val screens: List<String> = emptyList(),
+) {
+    internal fun json(): JSONObject = JSONObject().putOpt("appVersion", appVersion).putOpt("build", build)
+        .putOpt("device", device).putOpt("deviceName", deviceName).putOpt("os", os).putOpt("locale", locale)
+        .put("screens", JSONArray(screens))
+
+    internal companion object {
+        fun parse(o: JSONObject) = BugReport(
+            appVersion = o.optStringOrNull("appVersion"),
+            build = o.optStringOrNull("build"),
+            device = o.optStringOrNull("device"),
+            deviceName = o.optStringOrNull("deviceName"),
+            os = o.optStringOrNull("os"),
+            locale = o.optStringOrNull("locale"),
+            screens = o.optJSONArray("screens")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf(String::isNotEmpty) } } ?: emptyList(),
         )
     }
 }

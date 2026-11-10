@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Star
@@ -74,6 +75,7 @@ internal fun MessageRow(
                 val face = Modifier.alpha(if (showsFace) 1f else 0f)
                 if (ai) AIAvatar(28.dp, theme, face) else if (hasFace) Avatar(bundledPhoto, photo, 28.dp, theme, face)
                 Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (mine && message.report != null) ReportLabel(theme)
                     message.attachments.forEach { a -> resolve(a.url)?.let { Photo(it, theme) } }
                     val card = message.card
                     if (card != null && card.isShown) CardBubble(message.body, card, theme, onCard)
@@ -81,6 +83,15 @@ internal fun MessageRow(
                 }
             }
         }
+    }
+}
+
+/** Over a bug report the customer sent: a small, quiet "Bug report" tag. */
+@Composable
+private fun ReportLabel(theme: ChatTheme) {
+    Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(Icons.Filled.BugReport, null, Modifier.size(12.dp), tint = theme.secondary)
+        Text(L10n.text("bugReport"), style = ChatType.caption2, color = theme.secondary)
     }
 }
 

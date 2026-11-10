@@ -63,8 +63,14 @@ internal class Client(private val context: Context, val appId: String, val baseU
 
     suspend fun deleteData() { request("DELETE", "/v1/me") }
 
-    suspend fun send(text: String, attachments: List<String>, clientId: String): Message {
+    /** [report] makes it a bug report (see [BugReports.fields]); the text may then be empty. */
+    suspend fun send(text: String, attachments: List<String>, clientId: String, report: Map<String, Any>? = null): Message {
         val body = JSONObject().put("text", text).put("attachments", JSONArray(attachments)).put("clientId", clientId)
+        if (report != null) {
+            val o = JSONObject()
+            report.forEach { (k, v) -> o.put(k, if (v is List<*>) JSONArray(v) else v) }
+            body.put("report", o)
+        }
         return Message.parse(request("POST", "/v1/messages", body).getJSONObject("message"))
     }
 
@@ -136,11 +142,14 @@ internal class Client(private val context: Context, val appId: String, val baseU
         "appVersion" to appVersion(context),
         "os" to "Android ${Build.VERSION.RELEASE}",
         "locale" to Locale.getDefault().toLanguageTag(),
-        "device" to "${Build.MANUFACTURER} ${Build.MODEL}",
+        "device" to deviceModel(),
     )
 
     companion object {
         private val JSON = "application/json".toMediaType()
+
+        /** "<manufacturer> <model>", which the server turns into a readable device name. */
+        fun deviceModel(): String = "${Build.MANUFACTURER} ${Build.MODEL}"
 
         fun appVersion(context: Context): String = runCatching {
             val info = context.packageManager.getPackageInfo(context.packageName, 0)
