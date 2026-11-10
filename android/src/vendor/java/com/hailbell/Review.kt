@@ -4,33 +4,24 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import com.google.android.play.core.review.ReviewManager
-import com.google.android.play.core.review.ReviewManagerFactory
 
 /**
- * A review card's button. Google Play's in-app rating sheet opens over the chat, as the system
- * prompt does on iOS. When Play can't offer it, the card's Play listing opens instead.
+ * A review card's button opens the app's Play Store listing, where the customer can rate it.
  *
- * Play shows the sheet only to apps installed from Play (or internal app sharing), and at most a
- * few times a year per person. Otherwise `launchReviewFlow` finishes without showing anything and
- * without an error, so the listing link is kept only for when Play answers with an error.
+ * Google's in-app review sheet is not used here. Play shows it at most a few times a year per person
+ * and only to apps installed from Play, and when it decides not to show it, nothing happens and no
+ * error comes back, so a tapped button would do nothing. Google's guidance is that a button the user
+ * taps should open the Play Store listing instead
+ * (https://developer.android.com/guide/playcore/in-app-review#when-to-request).
  */
 internal object Review {
-    /** Swapped for Play's `FakeReviewManager` in tests. */
-    internal var managerFor: (Context) -> ReviewManager = { ReviewManagerFactory.create(it) }
-
     fun open(activity: Activity, listingUrl: String?) {
-        val manager = runCatching { managerFor(activity) }.getOrNull() ?: return openListing(activity, listingUrl)
-        manager.requestReviewFlow().addOnCompleteListener { request ->
-            if (activity.isFinishing) return@addOnCompleteListener
-            if (request.isSuccessful) manager.launchReviewFlow(activity, request.result)
-            else openListing(activity, listingUrl)
-        }
-    }
-
-    private fun openListing(activity: Activity, url: String?) {
-        url ?: return
-        runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        val url = listingUrl ?: return
+        val uri = Uri.parse(url)
+        // Prefer the Play Store app; the web listing is the fallback when it isn't installed.
+        val play = Intent(Intent.ACTION_VIEW, uri).setPackage("com.android.vending")
+        runCatching { activity.startActivity(play) }
+            .recoverCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
     }
 }
 
