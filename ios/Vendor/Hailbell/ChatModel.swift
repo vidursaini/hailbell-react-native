@@ -9,6 +9,8 @@ final class ChatModel: ObservableObject {
         let body: String
         var images: [UIImage] = []
         var failed = false
+        /// The message it answers, shown as a quote while it is on its way.
+        var replyTo: ReplyTo? = nil
     }
 
     @Published private(set) var messages: [Message] = []
@@ -30,6 +32,8 @@ final class ChatModel: ObservableObject {
     /// server says.
     @Published private(set) var agentActiveAt: Double?
     @Published var errorText: String?
+    /// The message the customer is answering, shown above the field until they send or cancel.
+    @Published private(set) var replyingTo: Message?
     let notifyAsk = NotifyAsk()
 
     private weak var owner: Hailbell?
@@ -117,6 +121,43 @@ final class ChatModel: ObservableObject {
         return !Self.sameSender(m, messages[i + 1])
     }
 
+    /// The chat's name in the header: the dashboard's title, else "<app> Support".
+    var chatTitle: String {
+        appearance.title ?? L10n.text("supportTitle", ["name": appName]).trimmingCharacters(in: .whitespaces)
+    }
+
+    // MARK: replies
+
+    /// Whether a message can be answered with a quote. Every message the server sent has an id;
+    /// messages still on their way or that failed are `Pending`, so they never get here.
+    func canReply(to m: Message) -> Bool { !m.id.isEmpty }
+
+    /// Picks the message to answer. Picking another replaces it.
+    func reply(to m: Message) {
+        guard canReply(to: m) else { return }
+        replyingTo = m
+    }
+
+    func cancelReply() { replyingTo = nil }
+
+    /// Who wrote a quoted message, as the customer sees it: their own messages are "You", a teammate
+    /// by name (else the chat's name), the AI by name with the AI label, and automatic messages by the
+    /// chat's name.
+    func replyName(_ r: ReplyTo) -> String {
+        Self.replyName(author: r.author, authorName: r.authorName, chatTitle: chatTitle)
+    }
+
+    nonisolated static func replyName(author: String, authorName: String?, chatTitle: String) -> String {
+        let name = authorName?.trimmingCharacters(in: .whitespaces)
+        let named = name?.isEmpty == false ? name : nil
+        switch author {
+        case "user": return L10n.text("you")
+        case "bot": return "\(named ?? "Assistant") · \(L10n.text("ai"))"
+        case "agent": return named ?? chatTitle
+        default: return chatTitle
+        }
+    }
+
     private static func sameSender(_ a: Message, _ b: Message) -> Bool {
         a.author == b.author && (a.isMine || a.authorName == b.authorName)
     }
@@ -135,6 +176,7 @@ final class ChatModel: ObservableObject {
             disconnect()
             conversationId = session.conversationId
             messages = Self.cached(session.conversationId)
+            replyingTo = nil
             hasMore = false
             agentReadAt = 0
             agentDeliveredAt = 0
@@ -155,6 +197,7 @@ final class ChatModel: ObservableObject {
         conversationId = nil
         messages = []
         pending = []
+        replyingTo = nil
         hasMore = false
         agentReadAt = 0
         agentDeliveredAt = 0
@@ -278,7 +321,8 @@ final class ChatModel: ObservableObject {
     func send(_ raw: String, images: [UIImage] = []) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !images.isEmpty else { return }
-        let item = Pending(id: UUID().uuidString, body: text, images: images)
+        let item = Pending(id: UUID().uuidString, body: text, images: images, replyTo: replyingTo.map(ReplyTo.init))
+        replyingTo = nil
         pending.append(item)
         deliver(item)
     }
@@ -299,7 +343,7 @@ final class ChatModel: ObservableObject {
                     guard let jpeg = image.chatJPEG() else { continue }
                     ids.append(try await client.upload(jpeg: jpeg.data, width: jpeg.width, height: jpeg.height))
                 }
-                let message = try await client.send(item.body, attachments: ids, clientId: item.id)
+                let message = try await client.send(item.body, attachments: ids, clientId: item.id, replyTo: item.replyTo?.id)
                 pending.removeAll { $0.id == item.id }
                 insert(message)
                 saveCache()

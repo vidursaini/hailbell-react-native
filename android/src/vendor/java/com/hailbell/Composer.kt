@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,12 +43,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -66,8 +70,15 @@ private val FIELD = RoundedCornerShape(18.dp)
 internal fun Composer(
     placeholder: String, allowsPhotos: Boolean, theme: ChatTheme,
     onTyping: () -> Unit, onSend: (String, List<Bitmap>) -> Unit, onFocus: (Boolean) -> Unit,
+    replying: ReplyTo? = null, replyName: String? = null, onCancelReply: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Picking a message to reply to puts the cursor in the field, ready to answer it.
+    LaunchedEffect(replying?.id) {
+        if (replying != null) runCatching { focus.requestFocus(); keyboard?.show() }
+    }
     var draft by remember { mutableStateOf("") }
     val images = remember { mutableStateListOf<Bitmap>() }
     val canSend = draft.isNotBlank() || images.isNotEmpty()
@@ -76,6 +87,7 @@ internal fun Composer(
     }
 
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (replying != null) ReplyBar(replying, replyName ?: "", theme, onCancelReply)
         if (images.isNotEmpty()) Previews(images)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (allowsPhotos) {
@@ -99,7 +111,7 @@ internal fun Composer(
                     BasicTextField(
                         draft,
                         { draft = it; if (it.isNotEmpty()) onTyping() },
-                        Modifier.fillMaxWidth().onFocusChanged { onFocus(it.isFocused) },
+                        Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { onFocus(it.isFocused) },
                         textStyle = ChatType.body.copy(color = theme.primary),
                         cursorBrush = SolidColor(theme.accent),
                         maxLines = 5,

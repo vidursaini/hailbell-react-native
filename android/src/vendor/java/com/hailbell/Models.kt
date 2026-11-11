@@ -125,13 +125,22 @@ data class Message(
     val authorAvatarUrl: String? = null,
     /** Set on a bug report sent from the report screen: the device details that came with it. */
     val report: BugReport? = null,
+    /** Set when this message replies to another one: a snapshot of the quoted message. */
+    val replyTo: ReplyTo? = null,
 ) {
+    /** The constructor before [replyTo] existed, kept so apps built against an older version still link. */
+    @Deprecated("Use the constructor with replyTo", level = DeprecationLevel.HIDDEN)
+    constructor(
+        id: String, author: String, authorName: String?, body: String, attachments: List<Attachment>, clientId: String?,
+        createdAt: Double, card: Card?, authorAvatarUrl: String?, report: BugReport?,
+    ) : this(id, author, authorName, body, attachments, clientId, createdAt, card, authorAvatarUrl, report, null)
+
     val isMine: Boolean get() = author == "user"
 
     internal fun json(): JSONObject = JSONObject().put("id", id).put("author", author).putOpt("authorName", authorName)
         .put("body", body).put("attachments", JSONArray(attachments.map { it.json() })).putOpt("clientId", clientId)
         .put("createdAt", createdAt).putOpt("card", card?.json()).putOpt("authorAvatarUrl", authorAvatarUrl)
-        .putOpt("report", report?.json())
+        .putOpt("report", report?.json()).putOpt("replyTo", replyTo?.json())
 
     internal companion object {
         fun parse(o: JSONObject) = Message(
@@ -145,7 +154,40 @@ data class Message(
             card = o.optJSONObject("card")?.let(Card::parse),
             authorAvatarUrl = o.optStringOrNull("authorAvatarUrl"),
             report = o.optJSONObject("report")?.let(BugReport::parse),
+            replyTo = o.optJSONObject("replyTo")?.let(ReplyTo::parse),
         )
+    }
+}
+
+/**
+ * The message another one replies to, as it was when the reply was sent. The quoted message itself may
+ * not be loaded. `image` is true when it had images (its `body` may then be empty).
+ */
+data class ReplyTo(
+    val id: String,
+    /** "user" | "agent" | "bot" | "system" */
+    val author: String,
+    val authorName: String? = null,
+    val body: String = "",
+    val image: Boolean = false,
+) {
+    internal fun json(): JSONObject = JSONObject().put("id", id).put("author", author).putOpt("authorName", authorName)
+        .put("body", body).putOpt("image", if (image) true else null)
+
+    internal companion object {
+        /** Null when the snapshot has no id, so a malformed quote never breaks the message. */
+        fun parse(o: JSONObject): ReplyTo? {
+            val id = o.optStringOrNull("id")?.takeIf(String::isNotEmpty) ?: return null
+            return ReplyTo(
+                id = id,
+                author = o.optStringOrNull("author") ?: "user",
+                authorName = o.optStringOrNull("authorName")?.takeIf(String::isNotEmpty),
+                body = o.optStringOrNull("body") ?: "",
+                image = o.optBoolean("image", false),
+            )
+        }
+
+        fun of(m: Message) = ReplyTo(m.id, m.author, m.authorName, m.body.take(200), m.attachments.isNotEmpty())
     }
 }
 

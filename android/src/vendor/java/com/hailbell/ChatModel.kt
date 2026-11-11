@@ -23,7 +23,7 @@ import java.util.UUID
 
 /** Holds the conversation and the live socket. One per app, owned by [Hailbell]. Main thread only. */
 internal class ChatModel {
-    data class Pending(val id: String, val body: String, val images: List<Bitmap> = emptyList(), val failed: Boolean = false)
+    data class Pending(val id: String, val body: String, val images: List<Bitmap> = emptyList(), val failed: Boolean = false, val replyTo: ReplyTo? = null)
 
     enum class Delivery { SENT, DELIVERED, SEEN }
 
@@ -46,6 +46,8 @@ internal class ChatModel {
     /** When someone on the team last did something (ms), for the dot on their photo. Null until the server says. */
     val agentActiveAt = MutableStateFlow<Double?>(null)
     val errorText = MutableStateFlow<String?>(null)
+    /** The message the customer picked to reply to, shown over the composer until they send or cancel. */
+    val replying = MutableStateFlow<Message?>(null)
     val notifyAsk = NotifyAsk()
 
     private val scope get() = Hailbell.scope
@@ -137,6 +139,7 @@ internal class ChatModel {
             disconnect()
             conversationId = session.conversationId
             messages.value = cached(session.conversationId)
+            replying.value = null
             hasMore.value = false
             agentReadAt.value = 0.0
             agentDeliveredAt.value = 0.0
@@ -155,6 +158,7 @@ internal class ChatModel {
         conversationId = null
         messages.value = emptyList()
         pending.value = emptyList()
+        replying.value = null
         hasMore.value = false
         agentReadAt.value = 0.0
         agentDeliveredAt.value = 0.0
@@ -260,12 +264,25 @@ internal class ChatModel {
         scope.launch { runCatching { client.markRead() } }
     }
 
+    // replying
+
+    /** Picks a message to reply to. Only messages the server has (sent ones) can be quoted. */
+    fun reply(m: Message) {
+        if (m.id.isEmpty()) return
+        replying.value = m
+    }
+
+    fun cancelReply() { replying.value = null }
+
     // sending
 
+    /** Sends the text and images, as a reply to the picked message if there is one, and clears the pick. */
     fun send(raw: String, images: List<Bitmap> = emptyList()) {
         val text = raw.trim()
         if (text.isEmpty() && images.isEmpty()) return
-        val item = Pending(UUID.randomUUID().toString().uppercase(), text, images)
+        val quote = replying.value?.let { ReplyTo.of(it) }
+        replying.value = null
+        val item = Pending(UUID.randomUUID().toString().uppercase(), text, images, replyTo = quote)
         pending.update { it + item }
         deliver(item)
     }
@@ -286,7 +303,7 @@ internal class ChatModel {
                     val jpeg = ImageEncoder.chatJpeg(image) ?: return@mapNotNull null
                     client.upload(jpeg.data, jpeg.width, jpeg.height)
                 }
-                val message = client.send(item.body, ids, item.id)
+                val message = client.send(item.body, ids, item.id, replyTo = item.replyTo?.id)
                 pending.update { list -> list.filterNot { it.id == item.id } }
                 insert(message)
                 saveCache()

@@ -63,9 +63,13 @@ internal class Client(private val context: Context, val appId: String, val baseU
 
     suspend fun deleteData() { request("DELETE", "/v1/me") }
 
-    /** [report] makes it a bug report (see [BugReports.fields]); the text may then be empty. */
-    suspend fun send(text: String, attachments: List<String>, clientId: String, report: Map<String, Any>? = null): Message {
+    /**
+     * [report] makes it a bug report (see [BugReports.fields]); the text may then be empty. [replyTo] is
+     * the id of the message this one replies to; servers that don't know the field ignore it.
+     */
+    suspend fun send(text: String, attachments: List<String>, clientId: String, report: Map<String, Any>? = null, replyTo: String? = null): Message {
         val body = JSONObject().put("text", text).put("attachments", JSONArray(attachments)).put("clientId", clientId)
+        replyTo?.let { body.put("replyTo", it) }
         if (report != null) {
             val o = JSONObject()
             report.forEach { (k, v) -> o.put(k, if (v is List<*>) JSONArray(v) else v) }

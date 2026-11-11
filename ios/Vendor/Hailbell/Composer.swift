@@ -10,11 +10,15 @@ struct Composer: View {
     let onTyping: () -> Void
     let onSend: (String, [UIImage]) -> Void
     @Binding var focused: Bool
+    /// The message being answered, shown above the field.
+    var reply: ReplyBarItem? = nil
+    var onCancelReply: () -> Void = {}
 
     @State private var draft = ""
     @State private var images: [UIImage] = []
     @State private var picks: [PhotosPickerItem] = []
     @FocusState private var fieldFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let maxImages = 4
     /// One line of text and the send button share this height, so both sit centred in the field.
@@ -23,6 +27,10 @@ struct Composer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let reply {
+                ReplyBar(item: reply, theme: theme, onCancel: onCancelReply)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
             if !images.isEmpty { previews }
             HStack(alignment: .bottom, spacing: 8) {
                 if allowsPhotos {
@@ -58,6 +66,9 @@ struct Composer: View {
         .background(theme.glass ? Color.clear : theme.surface)
         .onChange(of: picks) { items in load(items) }
         .onChange(of: fieldFocused) { focused = $0 }
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.86), value: reply?.quote.id)
+        // Picking a message to answer puts the cursor in the field.
+        .onChange(of: reply?.quote.id) { id in if id != nil { fieldFocused = true } }
     }
 
     private var sendButton: some View {

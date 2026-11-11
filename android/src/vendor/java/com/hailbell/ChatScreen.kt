@@ -28,7 +28,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** The chat: header, messages and composer. [onClose] dismisses the sheet. */
 @Composable
@@ -53,6 +57,22 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
     val ask by model.notifyAsk.state.collectAsState()
     val list = rememberLazyListState()
     val bundledAllowed by model.bundledPhotoAllowed.collectAsState()
+    val replying by model.replying.collectAsState()
+    val appName by model.appName.collectAsState()
+    val scope = rememberCoroutineScope()
+    var highlighted by remember { mutableStateOf<String?>(null) }
+    val title = appearance.title ?: L10n.text("supportTitle", mapOf("name" to appName)).trim()
+    val nameFor = { author: String, authorName: String? -> replyName(author, authorName, title, appearance.agentNames) }
+    // Tapping a quote scrolls to the original, if it's loaded, and tints it for a moment.
+    val showOriginal: (String) -> Unit = { id ->
+        val i = messages.indexOfFirst { it.id == id }
+        if (i >= 0) scope.launch {
+            list.animateScrollToItem((if (messages.isEmpty() && pending.isEmpty()) 2 else 0) + (if (hasMore) 1 else 0) + i)
+            highlighted = id
+            delay(1200)
+            if (highlighted == id) highlighted = null
+        }
+    }
 
     // New messages, a reply arriving, "Typing…" or a sent message: keep the newest in view.
     val tail = "${messages.size}|${messages.lastOrNull()?.id}|${pending.size}|$typing|$ask"
@@ -86,8 +106,10 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
                     MessageRow(
                         m, caption(model, m, messages, appearance), photo,
                         model.bundledPhoto(m, bundledAllowed, appearance, team), (m.author == "agent" || m.author == "bot") && model.endsRun(m, messages),
-                        model::resolve, theme,
-                    ) { model.cardAction(m, it) }
+                        model::resolve, theme, { model.cardAction(m, it) },
+                        quoteName = m.replyTo?.let { nameFor(it.author, it.authorName) },
+                        onQuote = showOriginal, onReply = { model.reply(m) }, highlighted = highlighted == m.id,
+                    )
                     model.delivery(m, messages, readAt, deliveredAt)?.let { Ticks(it, theme) }
                     // Thanks only for a real purchase; a tap may have closed the paywall, and the store
                     // never says whether a review was left.
@@ -104,9 +126,16 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
                         Modifier.clickable(enabled = p.failed) { model.retry(p) },
                         horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        val quote = p.replyTo
+                        val quoteName = quote?.let { nameFor(it.author, it.authorName) } ?: ""
+                        if (quote != null && p.body.isEmpty()) StandaloneQuote(quote, quoteName, true, theme, showOriginal)
                         p.images.forEach { PendingPhoto(it, faded = !p.failed) }
-                        if (p.body.isNotEmpty()) Bubble(p.body, true, theme, sending = !p.failed, failed = p.failed)
-                        else if (p.failed) NotSent()
+                        if (p.body.isNotEmpty()) {
+                            Bubble(
+                                p.body, true, theme, sending = !p.failed, failed = p.failed,
+                                quote = quote?.let { q -> { QuoteBlock(q, quoteName, true, theme, showOriginal) } },
+                            )
+                        } else if (p.failed) NotSent()
                     }
                 }
             }
@@ -119,6 +148,8 @@ internal fun ChatScreen(model: ChatModel, theme: ChatTheme, onClose: () -> Unit,
                 appearance.placeholder ?: L10n.text("placeholder"), appearance.attachments != false, theme,
                 onTyping = model::typing, onSend = { text, images -> model.send(text, images) },
                 onFocus = {},
+                replying = replying?.let { ReplyTo.of(it) }, replyName = replying?.let { nameFor(it.author, it.authorName) },
+                onCancelReply = model::cancelReply,
             )
         }
     }

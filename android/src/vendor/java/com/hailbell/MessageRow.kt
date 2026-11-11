@@ -3,37 +3,47 @@ package com.hailbell
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,8 +51,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,26 +78,80 @@ private val PHOTO = RoundedCornerShape(14.dp)
 internal fun MessageRow(
     message: Message, caption: String?, photo: String?, bundledPhoto: Bitmap?, showsFace: Boolean,
     resolve: (String) -> String?, theme: ChatTheme, onCard: (String) -> Unit,
+    quoteName: String? = null, onQuote: ((String) -> Unit)? = null, onReply: (() -> Unit)? = null, highlighted: Boolean = false,
 ) {
     val mine = message.isMine
     // AI replies carry the sparkles mark; yours carry your photo when there is one to show.
     val ai = message.author == "bot"
     val hasFace = ai || (!mine && (bundledPhoto != null || photo != null))
-    RowFrame(mine) {
-        Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (caption != null) {
-                Text(caption, style = ChatType.caption2, color = theme.secondary, modifier = Modifier.padding(start = if (hasFace) 42.dp else 6.dp))
-            }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val face = Modifier.alpha(if (showsFace) 1f else 0f)
-                if (ai) AIAvatar(28.dp, theme, face) else if (hasFace) Avatar(bundledPhoto, photo, 28.dp, theme, face)
+    // Briefly tinted after its quote was tapped, so the eye finds it.
+    val tint by animateColorAsState(if (highlighted) theme.accent.copy(alpha = 0.15f) else Color.Transparent, label = "highlight")
+    Box(Modifier.fillMaxWidth().background(tint, RoundedCornerShape(12.dp))) {
+        RowFrame(mine) {
+            SwipeToReply(onReply != null, theme, { onReply?.invoke() }) {
                 Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (mine && message.report != null) ReportLabel(theme)
-                    message.attachments.forEach { a -> resolve(a.url)?.let { Photo(it, theme) } }
-                    val card = message.card
-                    if (card != null && card.isShown) CardBubble(message.body, card, theme, onCard)
-                    else if (message.body.isNotEmpty()) Bubble(message.body, mine, theme)
+                    if (caption != null) {
+                        Text(caption, style = ChatType.caption2, color = theme.secondary, modifier = Modifier.padding(start = if (hasFace) 42.dp else 6.dp))
+                    }
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val face = Modifier.alpha(if (showsFace) 1f else 0f)
+                        if (ai) AIAvatar(28.dp, theme, face) else if (hasFace) Avatar(bundledPhoto, photo, 28.dp, theme, face)
+                        MessageMenu(message, onReply) {
+                            Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (mine && message.report != null) ReportLabel(theme)
+                                val card = message.card
+                                val cardShown = card != null && card.isShown
+                                val quote = message.replyTo
+                                val name = quoteName ?: ""
+                                // No text bubble to sit in: the quote goes above the images or card.
+                                if (quote != null && (cardShown || message.body.isEmpty())) StandaloneQuote(quote, name, mine, theme, onQuote)
+                                message.attachments.forEach { a -> resolve(a.url)?.let { Photo(it, theme) } }
+                                // Long-press opens the message's menu (Reply, Copy), so text selection is off where it can reply.
+                                val selectable = onReply == null
+                                if (card != null && cardShown) CardBubble(message.body, card, theme, onCard, selectable)
+                                else if (message.body.isNotEmpty()) {
+                                    Bubble(
+                                        message.body, mine, theme, selectable = selectable,
+                                        quote = quote?.let { q -> { QuoteBlock(q, name, mine, theme, onQuote) } },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Long-press on a sent message: a menu with Reply and Copy. TalkBack gets Reply as a custom action.
+ * Without [onReply] (nothing to reply to) the content is left as it is.
+ */
+@Composable
+private fun MessageMenu(message: Message, onReply: (() -> Unit)?, content: @Composable () -> Unit) {
+    if (onReply == null) { content(); return }
+    var open by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    val replyLabel = L10n.text("reply")
+    Box(
+        Modifier
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { open = true }) }
+            .semantics { customActions = listOf(CustomAccessibilityAction(replyLabel) { onReply(); true }) },
+    ) {
+        content()
+        DropdownMenu(open, { open = false }) {
+            DropdownMenuItem(
+                text = { Text(replyLabel) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, null) },
+                onClick = { open = false; onReply() },
+            )
+            if (message.body.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(android.R.string.copy)) },
+                    leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                    onClick = { open = false; clipboard.setText(AnnotatedString(message.body)) },
+                )
             }
         }
     }
@@ -135,15 +206,22 @@ internal fun PendingPhoto(image: Bitmap, faded: Boolean) {
 }
 
 @Composable
-internal fun Bubble(text: String, mine: Boolean, theme: ChatTheme, sending: Boolean = false, failed: Boolean = false) {
+internal fun Bubble(
+    text: String, mine: Boolean, theme: ChatTheme, sending: Boolean = false, failed: Boolean = false,
+    selectable: Boolean = true, quote: (@Composable () -> Unit)? = null,
+) {
     Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        SelectionContainer {
-            Text(
-                text, style = ChatType.body, color = if (mine) theme.onAccent else theme.incomingText,
-                modifier = Modifier.alpha(if (sending) 0.6f else 1f)
-                    .background(if (mine) theme.accent else theme.incoming, BUBBLE)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+        Column(
+            Modifier.alpha(if (sending) 0.6f else 1f)
+                .background(if (mine) theme.accent else theme.incoming, BUBBLE)
+                // With a quote, the quote and the text share the wider of the two widths.
+                .then(if (quote != null) Modifier.width(IntrinsicSize.Max) else Modifier)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (quote != null) Box(Modifier.padding(top = 2.dp)) { quote() }
+            val body = @Composable { Text(text, style = ChatType.body, color = if (mine) theme.onAccent else theme.incomingText) }
+            if (selectable) SelectionContainer { body() } else body()
         }
         if (failed) NotSent()
     }
@@ -160,7 +238,7 @@ internal fun NotSent() {
  * they choose.
  */
 @Composable
-private fun CardBubble(text: String, card: Card, theme: ChatTheme, act: (String) -> Unit) {
+private fun CardBubble(text: String, card: Card, theme: ChatTheme, act: (String) -> Unit, selectable: Boolean = true) {
     val context = LocalContext.current
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
@@ -171,7 +249,8 @@ private fun CardBubble(text: String, card: Card, theme: ChatTheme, act: (String)
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (text.isNotEmpty()) {
-            SelectionContainer { Text(text, style = ChatType.body, color = theme.incomingText, modifier = Modifier.padding(horizontal = 4.dp)) }
+            val body = @Composable { Text(text, style = ChatType.body, color = theme.incomingText, modifier = Modifier.padding(horizontal = 4.dp)) }
+            if (selectable) SelectionContainer { body() } else body()
         }
         Row(
             Modifier.scale(scale).fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(50)).background(theme.accent)

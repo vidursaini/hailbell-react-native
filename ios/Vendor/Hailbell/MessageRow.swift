@@ -10,6 +10,13 @@ struct MessageRow: View {
     let showsFace: Bool
     let baseURL: URL?
     let theme: ChatTheme
+    /// Who wrote the message this one quotes, already named for the customer ("You", a teammate…).
+    var quoteName: String? = nil
+    /// Whether it can be swiped (or long-pressed) to answer it.
+    var canReply = false
+    var onReply: () -> Void = {}
+    /// Tapped the quote: jump to the original.
+    var onQuote: (String) -> Void = { _ in }
     var onCard: (String) -> Void = { _ in }
 
     var body: some View {
@@ -26,21 +33,39 @@ struct MessageRow: View {
                     Avatar(image: bundledPhoto, url: photo, size: 28, theme: theme).opacity(showsFace ? 1 : 0)
                 }
                 VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
+                    if let quote, quoteStandsAlone {
+                        // As wide as the quote needs, up to the width of a photo.
+                        BubbleStack {
+                            QuoteBlock(name: quote.name, quote: quote.reply, onAccent: false, theme: theme, standalone: true) { onQuote(quote.reply.id) }
+                        }
+                        .frame(maxWidth: 260, alignment: mine ? .trailing : .leading)
+                    }
                     ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, a in
                         if let base = baseURL, let url = URL(string: a.url, relativeTo: base) { Photo(url: url) }
                     }
                     if let card = message.card, card.isShown {
                         CardBubble(text: message.body, card: card, theme: theme, act: onCard)
                     } else if !message.body.isEmpty {
-                        Bubble(text: message.body, mine: mine, theme: theme)
+                        Bubble(text: message.body, mine: mine, theme: theme, quote: quote) { onQuote($0) }
                     }
                     if mine, message.report != nil { BugReportTag() }
                 }
             }
+            .swipeToReply(enabled: canReply, theme: theme, copyText: message.body, onReply: onReply)
         }
         .frame(maxWidth: Self.maxWidth, alignment: mine ? .trailing : .leading)
         .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
         .padding(mine ? .leading : .trailing, 48)
+    }
+
+    private var quote: (name: String, reply: ReplyTo)? {
+        guard let reply = message.replyTo else { return nil }
+        return (quoteName ?? "", reply)
+    }
+
+    /// Image-only messages and cards show the quote above them rather than inside a text bubble.
+    private var quoteStandsAlone: Bool {
+        message.body.isEmpty || message.card?.isShown == true
     }
 
     /// AI replies carry the sparkles mark; yours carry your photo when there is one to show.
@@ -87,17 +112,32 @@ struct Bubble: View {
     let theme: ChatTheme
     var sending = false
     var failed = false
+    /// The message this one answers, shown at the top of the bubble.
+    var quote: (name: String, reply: ReplyTo)? = nil
+    var onQuote: (String) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
-            Text(text)
-                .textSelection(.enabled)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+            content
                 .foregroundStyle(mine ? theme.onAccent : theme.incomingText)
                 .background(mine ? theme.accent : theme.incoming, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .opacity(sending ? 0.6 : 1)
             if failed { Text(L10n.text("notSent")).font(.caption2).foregroundStyle(.red).padding(.horizontal, 6) }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let quote {
+            BubbleStack(spacing: 4) {
+                QuoteBlock(name: quote.name, quote: quote.reply, onAccent: mine, theme: theme) { onQuote(quote.reply.id) }
+                Text(text).textSelection(.enabled).padding(.horizontal, 6).padding(.bottom, 2)
+            }
+            .padding(6)
+        } else {
+            Text(text)
+                .textSelection(.enabled)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
         }
     }
 }

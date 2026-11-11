@@ -3,6 +3,9 @@ import SwiftUI
 struct ChatView: View {
     @ObservedObject var model: ChatModel
     @State private var composing = false
+    /// The message a tapped quote jumped to, tinted for a moment.
+    @State private var highlighted: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
 
@@ -28,7 +31,15 @@ struct ChatView: View {
                             MessageRow(message: m, caption: caption(m), photo: photo,
                                        bundledPhoto: model.bundledPhoto(for: m),
                                        showsFace: (m.author == "agent" || m.author == "bot") && model.endsRun(m), baseURL: model.baseURL,
-                                       theme: theme) { model.cardAction(m, $0) }
+                                       theme: theme, quoteName: m.replyTo.map(model.replyName),
+                                       canReply: model.canReply(to: m), onReply: { model.reply(to: m) },
+                                       onQuote: { jump(to: $0, proxy) }, onCard: { model.cardAction(m, $0) })
+                                .background {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(theme.accent.opacity(highlighted == m.id ? 0.16 : 0))
+                                        .padding(.horizontal, -8).padding(.vertical, -3)
+                                        .allowsHitTesting(false)
+                                }
                                 .id(m.id)
                             if let delivery = model.delivery(of: m) { Ticks(delivery: delivery) }
                             // Thanks only for a real purchase; a tap may have closed the paywall, and iOS never says
@@ -42,7 +53,7 @@ struct ChatView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6)
                         }
                         ForEach(model.pending) { p in
-                            PendingRow(item: p, theme: theme)
+                            PendingRow(item: p, theme: theme, quoteName: p.replyTo.map(model.replyName)) { jump(to: $0, proxy) }
                                 .id(p.id)
                                 .onTapGesture { if p.failed { model.retry(p) } }
                         }
@@ -74,7 +85,9 @@ struct ChatView: View {
                         }
                         Composer(placeholder: model.appearance.placeholder ?? L10n.text("placeholder"),
                                  allowsPhotos: model.appearance.attachments != false, theme: theme,
-                                 onTyping: { model.typing() }, onSend: { model.send($0, images: $1) }, focused: $composing)
+                                 onTyping: { model.typing() }, onSend: { model.send($0, images: $1) }, focused: $composing,
+                                 reply: model.replyingTo.map { ReplyBarItem(name: model.replyName(ReplyTo($0)), quote: ReplyTo($0)) },
+                                 onCancelReply: { model.cancelReply() })
                     }
                 }
             }
@@ -87,15 +100,24 @@ struct ChatView: View {
 
     private static let bottom = "hailbell-bottom"
 
+    /// Tapped a quote: scroll to the message it quotes and tint it for a moment. Nothing happens when
+    /// that message isn't loaded (an older page).
+    private func jump(to id: String, _ proxy: ScrollViewProxy) {
+        guard model.messages.contains(where: { $0.id == id }) else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { proxy.scrollTo(id, anchor: .center) }
+        withAnimation(.easeOut(duration: 0.2)) { highlighted = id }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            if highlighted == id { withAnimation(.easeOut(duration: 0.6)) { highlighted = nil } }
+        }
+    }
+
     /// Changes whenever something new appears at the bottom of the chat.
     private var tail: String {
         "\(model.messages.count)|\(model.messages.last?.id ?? "")|\(model.pending.count)|\(model.agentTyping)"
     }
 
-    private var title: String {
-        model.appearance.title ?? L10n.text("supportTitle", ["name": model.appName.isEmpty ? "" : model.appName])
-            .trimmingCharacters(in: .whitespaces)
-    }
+    private var title: String { model.chatTitle }
 
     /// "We read every message.", unless the dashboard set its own line.
     private var subtitle: String {
@@ -194,9 +216,20 @@ struct ChatView: View {
 private struct PendingRow: View {
     let item: ChatModel.Pending
     let theme: ChatTheme
+    var quoteName: String? = nil
+    var onQuote: (String) -> Void = { _ in }
+
+    private var quote: (name: String, reply: ReplyTo)? { item.replyTo.map { (quoteName ?? "", $0) } }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
+            if let quote, item.body.isEmpty {
+                BubbleStack {
+                    QuoteBlock(name: quote.name, quote: quote.reply, onAccent: false, theme: theme, standalone: true) { onQuote(quote.reply.id) }
+                }
+                .frame(maxWidth: 260, alignment: .trailing)
+                .opacity(item.failed ? 1 : 0.6)
+            }
             ForEach(item.images.indices, id: \.self) { i in
                 Image(uiImage: item.images[i]).resizable().scaledToFit()
                     .frame(maxWidth: 220, maxHeight: 280)
@@ -204,7 +237,7 @@ private struct PendingRow: View {
                     .opacity(item.failed ? 1 : 0.6)
             }
             if !item.body.isEmpty {
-                Bubble(text: item.body, mine: true, theme: theme, sending: !item.failed, failed: item.failed)
+                Bubble(text: item.body, mine: true, theme: theme, sending: !item.failed, failed: item.failed, quote: quote, onQuote: onQuote)
             } else if item.failed {
                 Text(L10n.text("notSent")).font(.caption2).foregroundStyle(.red).padding(.horizontal, 6)
             }

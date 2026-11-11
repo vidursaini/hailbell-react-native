@@ -70,6 +70,9 @@ public struct Message: Codable, Identifiable, Equatable {
     public var card: Card?
     /// Set on a bug report the customer sent from the report screen: their app, device and last screens.
     public let report: ReportDetails?
+    /// The message this one answers, as it was when the reply was sent. Nil on ordinary messages and
+    /// on servers that predate replies.
+    public let replyTo: ReplyTo?
 
     var isMine: Bool { author == "user" }
     var date: Date { Date(timeIntervalSince1970: createdAt / 1000) }
@@ -86,7 +89,52 @@ public struct Message: Codable, Identifiable, Equatable {
         createdAt = try c.decode(Double.self, forKey: .createdAt)
         card = try c.decodeIfPresent(Card.self, forKey: .card)
         report = try c.decodeIfPresent(ReportDetails.self, forKey: .report)
+        // A quote the SDK can't read must not lose the message itself.
+        replyTo = (try? c.decodeIfPresent(ReplyTo.self, forKey: .replyTo)) ?? nil
     }
+}
+
+/// A snapshot of the message a reply quotes: who wrote it and its first 200 characters. The quoted
+/// message may not be loaded in the chat.
+public struct ReplyTo: Codable, Equatable {
+    public let id: String
+    public let author: String          // "user" | "agent" | "bot" | "system"
+    public let authorName: String?
+    /// Empty when the quoted message was only images.
+    public let body: String
+    /// True when the quoted message had images.
+    public let image: Bool?
+
+    init(id: String, author: String, authorName: String?, body: String, image: Bool?) {
+        self.id = id
+        self.author = author
+        self.authorName = authorName
+        self.body = body
+        self.image = image
+    }
+
+    /// The quote a reply to `message` will carry, built on the device for the message on its way.
+    init(_ message: Message) {
+        self.init(id: message.id, author: message.author, authorName: message.authorName,
+                  body: String(message.body.prefix(200)), image: message.attachments.isEmpty ? nil : true)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        author = try c.decodeIfPresent(String.self, forKey: .author) ?? "agent"
+        authorName = try c.decodeIfPresent(String.self, forKey: .authorName)
+        body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        image = try c.decodeIfPresent(Bool.self, forKey: .image)
+    }
+
+    /// One line of the quoted text, or nil when it was only images (see `image`).
+    var snippet: String? {
+        let line = body.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return line.isEmpty ? nil : line
+    }
+
+    var isPhoto: Bool { snippet == nil && image == true }
 }
 
 /// What a bug report says about where it came from. Every field is optional, since the server may
@@ -169,11 +217,12 @@ final class Client {
     }
 
     /// Posts a message. `report` turns it into a bug report (see `Hailbell.reportDetails`); the text may
-    /// then be empty.
-    func send(_ text: String, attachments: [String] = [], clientId: String, report: [String: Any]? = nil) async throws -> Message {
+    /// then be empty. `replyTo` is the id of the message it answers; older servers ignore it.
+    func send(_ text: String, attachments: [String] = [], clientId: String, report: [String: Any]? = nil, replyTo: String? = nil) async throws -> Message {
         struct Out: Decodable { let message: Message }
         var body: [String: Any] = ["text": text, "attachments": attachments, "clientId": clientId]
         if let report { body["report"] = report }
+        if let replyTo { body["replyTo"] = replyTo }
         let out: Out = try await request("POST", "/v1/messages", body: body)
         return out.message
     }
